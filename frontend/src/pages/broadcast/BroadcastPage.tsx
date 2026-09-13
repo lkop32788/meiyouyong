@@ -227,7 +227,7 @@ function CreateCampaignWizard({ onDone, onCancel }: { onDone: (c: Campaign) => v
   const [form, setForm]     = useState({
     name: '',
     channel_id: '',
-    audience_type: 'all' as const,
+    audience_type: 'all' as 'all' | 'tag' | 'segment' | 'upload',
     audience_config: {},
     scheduled_at: '',
     rate_limit_per_minute: 60,
