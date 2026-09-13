@@ -216,7 +216,7 @@ export default function BotFlowListPage() {
                   disabled={aiGenerating}
                   className="px-4 py-2 text-sm rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-700 hover:to-indigo-700 disabled:opacity-50"
                 >
-                  {aiGenerating ? '生成中…（约 10-30 秒）' : '开始生成'}
+                  {aiGenerating ? '生成中…（可能需要 1-2 分钟）' : '开始生成'}
                 </button>
               </div>
             )}
