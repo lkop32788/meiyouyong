@@ -11,6 +11,7 @@ import AnalyticsPage from './pages/analytics/AnalyticsPage';
 import ChannelsPage from './pages/settings/ChannelsPage';
 import CompanySettingsPage from './pages/settings/CompanySettingsPage';
 import AgentsSettingsPage from './pages/settings/AgentsSettingsPage';
+import MetaAppsPage from './pages/settings/MetaAppsPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -32,6 +33,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/analytics', icon: '📊', label: '分析' },
   { icon: '⚙️', label: '设置', children: [
     { to: '/channels', icon: '📱', label: '渠道' },
+    { to: '/settings/meta-apps', icon: '🔑', label: 'Meta 应用' },
     { to: '/settings/company', icon: '🏢', label: '公司' },
     { to: '/settings/agents', icon: '👥', label: '客服' },
   ]},
@@ -173,6 +175,7 @@ export default function App() {
           <Route path="/broadcast"         element={<BroadcastPage />} />
           <Route path="/analytics"         element={<AnalyticsPage />} />
           <Route path="/channels"          element={<ChannelsPage />} />
+          <Route path="/settings/meta-apps" element={<MetaAppsPage />} />
           <Route path="/settings/company"  element={<CompanySettingsPage />} />
           <Route path="/settings/agents"   element={<AgentsSettingsPage />} />
         </Route>

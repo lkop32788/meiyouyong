@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Channel;
+use App\Http\Controllers\Api\MetaAppConfigController;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -79,19 +80,38 @@ class ChannelConnectionController extends Controller
 
     // ── Facebook Page connect (Messenger) ────────────────────────────────────
 
-    /** GET /api/channels/facebook/config — appId for the frontend FB.login popup */
+    /** GET /api/channels/facebook/config — available Meta apps + connected pages */
     public function facebookConfig(Request $request): JsonResponse
     {
-        $appId = config('services.facebook.app_id');
+        $companyId = $request->user()->company_id;
 
-        $connected = Channel::where('company_id', $request->user()->company_id)
+        // All configured Meta apps (multi-app support); fall back to .env
+        $apps = collect($request->user()->company->settings['meta_apps'] ?? [])
+            ->filter(fn ($a) => ($a['kind'] ?? null) === 'facebook')
+            ->map(fn ($a) => [
+                'id'        => $a['id'],
+                'label'     => $a['label'],
+                'app_id'    => $a['app_id'],
+                'config_id' => $a['config_id'] ?? null,
+            ])
+            ->values();
+
+        if ($apps->isEmpty() && config('services.facebook.app_id')) {
+            $apps->push([
+                'id'        => 'env',
+                'label'     => '默认应用（.env）',
+                'app_id'    => config('services.facebook.app_id'),
+                'config_id' => config('services.facebook.config_id'),
+            ]);
+        }
+
+        $connected = Channel::where('company_id', $companyId)
             ->where('type', 'facebook')
             ->get(['id', 'name', 'settings', 'is_active']);
 
         return response()->json([
             'data' => [
-                'app_id'    => $appId,
-                'config_id' => config('services.facebook.config_id'),
+                'apps'      => $apps,
                 'channels'  => $connected->map(fn ($c) => [
                     'id'        => $c->id,
                     'name'      => $c->name,
@@ -104,10 +124,11 @@ class ChannelConnectionController extends Controller
     }
 
     /**
-     * POST /api/channels/facebook/connect  { code, pageId?, redirectUri? }
+     * POST /api/channels/facebook/connect  { code, pageId?, redirectUri?, appId? }
      * Exchange the FB.login code → list Pages → store Page token as a channel.
-     * If the user manages several Pages and none was selected, returns
-     * needs_page_choice so the frontend can ask which Page to connect.
+     * Uses the per-company Meta app (multi-app) matching appId, or the first
+     * configured app, or the .env fallback. If the user manages several Pages
+     * and none was selected, returns needs_page_choice for the frontend picker.
      */
     public function facebookConnect(Request $request): JsonResponse
     {
@@ -115,13 +136,25 @@ class ChannelConnectionController extends Controller
             'code'        => 'required|string',
             'pageId'      => 'nullable|string',
             'redirectUri' => 'nullable|string',
+            'appId'       => 'nullable|string',
         ]);
 
-        $appId     = config('services.facebook.app_id');
-        $appSecret = config('services.facebook.app_secret');
+        $companyId = $request->user()->company_id;
+
+        // Multi-app: prefer the app the frontend logged in with
+        $app = MetaAppConfigController::resolveFor($companyId, 'facebook', $request->input('appId'));
+
+        if ($app) {
+            $appId     = $app['app_id'];
+            $appSecret = $app['app_secret'];
+        } else {
+            // .env fallback (single-app legacy mode)
+            $appId     = config('services.facebook.app_id');
+            $appSecret = config('services.facebook.app_secret');
+        }
 
         if (! $appId || ! $appSecret) {
-            return response()->json(['message' => 'Facebook 登录尚未配置（需要 FACEBOOK_APP_ID / FACEBOOK_APP_SECRET）。'], 503);
+            return response()->json(['message' => '尚未配置 Meta 应用。请在「Meta 应用配置」中添加 App ID 和 Secret。'], 503);
         }
 
         $companyId = $request->user()->company_id;

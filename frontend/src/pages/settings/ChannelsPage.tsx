@@ -25,8 +25,7 @@ interface QrStatus {
 }
 
 interface FacebookConfig {
-  app_id: string;
-  config_id?: string;
+  apps: { id: string; label: string; app_id: string; config_id?: string | null }[];
   channels: { id: string; name: string; page_id?: string | null; page_name?: string | null; is_active: boolean }[];
 }
 
@@ -117,7 +116,8 @@ export default function ChannelsPage() {
 
   // Facebook connect state
   const [fbConfig, setFbConfig]         = useState<FacebookConfig | null>(null);
-  const [fbPageChoice, setFbPageChoice] = useState<{ code: string; pages: { id: string; name: string }[] } | null>(null);
+  const [fbAppChoice, setFbAppChoice]   = useState<FacebookConfig | null>(null);
+  const [fbPageChoice, setFbPageChoice] = useState<{ code: string; appId?: string; pages: { id: string; name: string }[] } | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -273,46 +273,57 @@ export default function ChannelsPage() {
     }
   };
 
-  // ── Facebook OAuth connect ─────────────────────────────────────────
+  // ── Facebook OAuth connect (multi-app) ───────────────────────────
   const connectFacebook = async () => {
     try {
       const { data } = await api.get('/channels/facebook/config');
       const cfg: FacebookConfig = data.data;
-      if (!cfg?.app_id) {
-        toast.error('Facebook 登录尚未配置（需要 FACEBOOK_APP_ID）');
+      if (!cfg?.apps?.length) {
+        toast.error('尚未配置 Meta 应用，请先到「设置 → Meta 应用」添加');
         return;
       }
       setFbConfig(cfg);
-      // Load the SDK lazily, then open the login popup
-      if (!document.getElementById('facebook-jssdk')) {
-        const script = document.createElement('script');
-        script.id = 'facebook-jssdk';
-        script.src = 'https://connect.facebook.net/zh_CN/sdk.js';
-        document.body.appendChild(script);
+      if (cfg.apps.length === 1) {
+        startFbLogin(cfg.apps[0]);
+      } else {
+        setFbAppChoice(cfg); // let the user pick which Meta app to authorize
       }
-      window.fbAsyncInit = () => {
-        window.FB?.init({ appId: cfg.app_id, cookie: true, xfbml: false, version: 'v21.0' });
-        launchFbLogin(cfg);
-      };
-      if (window.FB) launchFbLogin(cfg);
     } catch {
       toast.error('获取 Facebook 配置失败');
     }
   };
 
-  const launchFbLogin = (cfg: FacebookConfig) => {
+  const ensureFbSdk = () => {
+    if (!document.getElementById('facebook-jssdk')) {
+      const script = document.createElement('script');
+      script.id = 'facebook-jssdk';
+      script.src = 'https://connect.facebook.net/zh_CN/sdk.js';
+      document.body.appendChild(script);
+    }
+  };
+
+  const startFbLogin = (app: { id: string; label: string; app_id: string; config_id?: string | null }) => {
+    ensureFbSdk();
+    window.fbAsyncInit = () => {
+      window.FB?.init({ appId: app.app_id, cookie: true, xfbml: false, version: 'v21.0' });
+      launchFbLogin(app);
+    };
+    if (window.FB) launchFbLogin(app);
+  };
+
+  const launchFbLogin = (app: { id: string; label: string; app_id: string; config_id?: string | null }) => {
     window.FB?.login(async (response) => {
       const code = response?.authResponse?.code;
       if (!code) { toast.error('Facebook 授权已取消'); return; }
-      await submitFacebookCode(code);
+      await submitFacebookCode(code, undefined, app.app_id);
     }, { scope: 'pages_show_list,pages_messaging,pages_manage_metadata', return_scopes: true });
   };
 
-  const submitFacebookCode = async (code: string, pageId?: string) => {
+  const submitFacebookCode = async (code: string, pageId?: string, appId?: string) => {
     try {
-      const { data } = await api.post('/channels/facebook/connect', { code, pageId });
+      const { data } = await api.post('/channels/facebook/connect', { code, pageId, appId });
       if (data.data?.needs_page_choice) {
-        setFbPageChoice({ code, pages: data.data.pages });
+        setFbPageChoice({ code, appId, pages: data.data.pages });
         return;
       }
       toast.success(`Facebook 主页「${data.data?.page_name}」已接入`);
@@ -336,12 +347,21 @@ export default function ChannelsPage() {
           <h1 className="text-xl font-bold text-gray-900">渠道管理</h1>
           <p className="text-sm text-gray-400 mt-1">接入 WhatsApp、LINE、邮箱、Telegram 等渠道 · {quotaText}</p>
         </div>
-        <button
-          onClick={openCreate}
-          className="bg-brand-600 hover:bg-brand-700 text-white text-sm rounded-lg px-4 py-2"
-        >
-          + 接入渠道
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={connectFacebook}
+            className="bg-[#1877F2] hover:bg-[#0e5fd8] text-white text-sm rounded-lg px-4 py-2"
+            title="通过 Facebook 授权接入公共主页（Messenger）"
+          >
+            📘 连接 Facebook 主页
+          </button>
+          <button
+            onClick={openCreate}
+            className="bg-brand-600 hover:bg-brand-700 text-white text-sm rounded-lg px-4 py-2"
+          >
+            + 接入渠道
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -455,6 +475,30 @@ export default function ChannelsPage() {
         </div>
       )}
 
+      {/* ── Facebook app choice modal (multi-app) ─────────────────── */}
+      {fbAppChoice && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setFbAppChoice(null)}>
+          <div className="bg-white rounded-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-gray-900 mb-4">选择要授权的 Meta 应用</h2>
+            <div className="space-y-2 max-h-72 overflow-y-auto mb-4">
+              {fbAppChoice.apps.map((a) => (
+                <button
+                  key={a.id}
+                  onClick={() => { setFbAppChoice(null); startFbLogin(a); }}
+                  className="w-full text-left px-4 py-2.5 rounded-lg border border-gray-200 hover:border-brand-500 hover:bg-brand-50 text-sm text-gray-700"
+                >
+                  🔑 {a.label}
+                  <span className="block text-xs text-gray-400 mt-0.5">App ID: {a.app_id}</span>
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-end">
+              <button onClick={() => setFbAppChoice(null)} className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">取消</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Facebook page choice modal ───────────────────────────── */}
       {fbPageChoice && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setFbPageChoice(null)}>
@@ -464,7 +508,7 @@ export default function ChannelsPage() {
               {fbPageChoice.pages.map((p) => (
                 <button
                   key={p.id}
-                  onClick={() => submitFacebookCode(fbPageChoice.code, p.id)}
+                  onClick={() => submitFacebookCode(fbPageChoice.code, p.id, fbPageChoice.appId)}
                   className="w-full text-left px-4 py-2.5 rounded-lg border border-gray-200 hover:border-brand-500 hover:bg-brand-50 text-sm text-gray-700"
                 >
                   📘 {p.name}
@@ -477,8 +521,6 @@ export default function ChannelsPage() {
           </div>
         </div>
       )}
-      {/* fbConfig kept in state to avoid re-fetching during the login flow */}
-      {fbConfig && !fbPageChoice ? null : null}
 
       {modalOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setModalOpen(false)}>

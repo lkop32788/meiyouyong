@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\ChannelController;
 use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\MessageController;
+use App\Http\Controllers\Api\MetaAppConfigController;
 use App\Http\Controllers\Api\TemplateController;
 use App\Http\Controllers\Auth\LoginController;
 use Illuminate\Support\Facades\Route;
@@ -113,6 +114,15 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::post('/',       [TemplateController::class, 'store']);
         Route::get('/{id}',    [TemplateController::class, 'show']);
         Route::delete('/{id}', [TemplateController::class, 'destroy']);
+    });
+
+    // Meta app credentials (multi-app: Facebook / WhatsApp per company)
+    Route::prefix('meta-apps')->group(function () {
+        Route::get('/',            [MetaAppConfigController::class, 'index']);
+        Route::post('/',           [MetaAppConfigController::class, 'store']);
+        Route::put('/{id}',        [MetaAppConfigController::class, 'update']);
+        Route::delete('/{id}',     [MetaAppConfigController::class, 'destroy']);
+        Route::post('/{id}/verify',[MetaAppConfigController::class, 'verify']);
     });
 
     // Analytics (Phase 5C)
