@@ -29,13 +29,13 @@ const STATUS_STYLE: Record<CampaignStatus, string> = {
 };
 
 const STATUS_LABEL: Record<CampaignStatus, string> = {
-  draft:     'Draft',
-  scheduled: 'Terjadwal',
-  running:   'Berjalan',
-  paused:    'Dijeda',
-  completed: 'Selesai',
-  failed:    'Gagal',
-  cancelled: 'Dibatalkan',
+  draft:     '草稿',
+  scheduled: '已排期',
+  running:   '进行中',
+  paused:    '已暂停',
+  completed: '已完成',
+  failed:    '失败',
+  cancelled: '已取消',
 };
 
 export default function BroadcastPage() {
@@ -73,7 +73,7 @@ export default function BroadcastPage() {
     setCampaigns((prev) =>
       prev.map((c) => (c.id === id ? { ...c, status: newStatus[act] ?? c.status } : c))
     );
-    toast.success(`Campaign di-${act === 'launch' ? 'launch' : act === 'pause' ? 'pause' : act === 'resume' ? 'resume' : 'cancel'}`);
+    toast.success(act === 'launch' ? '群发已启动' : act === 'pause' ? '群发已暂停' : act === 'resume' ? '群发已恢复' : '群发已取消');
   };
 
   if (showCreate) {
@@ -85,29 +85,29 @@ export default function BroadcastPage() {
       {/* Campaign list */}
       <div className={`${selected ? 'w-1/2' : 'flex-1'} flex flex-col border-r border-gray-200 overflow-hidden`}>
         <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-white">
-          <h1 className="text-lg font-bold text-gray-900">Broadcast Campaign</h1>
+          <h1 className="text-lg font-bold text-gray-900">群发活动</h1>
           <button
             onClick={() => setShowCreate(true)}
             className="bg-brand-600 hover:bg-brand-700 text-white text-sm rounded-lg px-4 py-2 transition"
           >
-            + Buat Campaign
+            + 新建群发
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto bg-gray-50">
           {loading ? (
-            <p className="text-center text-sm text-gray-400 mt-8">Memuat...</p>
+            <p className="text-center text-sm text-gray-400 mt-8">加载中...</p>
           ) : campaigns.length === 0 ? (
             <div className="text-center py-16 text-gray-400">
-              <p className="text-lg mb-2">Belum ada campaign</p>
+              <p className="text-lg mb-2">暂无群发活动</p>
             </div>
           ) : (
             <table className="w-full text-sm bg-white">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Nama</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Progress</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">名称</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">状态</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">进度</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -144,15 +144,15 @@ export default function BroadcastPage() {
                       <td className="px-4 py-3">
                         <div className="flex gap-2 justify-end" onClick={(e) => e.stopPropagation()}>
                           {c.status === 'draft' && (
-                            <button onClick={() => action(c.id, 'launch')} className="text-xs text-green-600 hover:underline">Launch</button>
+                            <button onClick={() => action(c.id, 'launch')} className="text-xs text-green-600 hover:underline">启动</button>
                           )}
                           {c.status === 'running' && (
-                            <button onClick={() => action(c.id, 'pause')} className="text-xs text-yellow-600 hover:underline">Pause</button>
+                            <button onClick={() => action(c.id, 'pause')} className="text-xs text-yellow-600 hover:underline">暂停</button>
                           )}
                           {c.status === 'paused' && (
                             <>
-                              <button onClick={() => action(c.id, 'resume')} className="text-xs text-green-600 hover:underline">Resume</button>
-                              <button onClick={() => action(c.id, 'cancel')} className="text-xs text-red-500 hover:underline">Cancel</button>
+                              <button onClick={() => action(c.id, 'resume')} className="text-xs text-green-600 hover:underline">恢复</button>
+                              <button onClick={() => action(c.id, 'cancel')} className="text-xs text-red-500 hover:underline">取消</button>
                             </>
                           )}
                         </div>
@@ -196,7 +196,7 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
       {/* Progress bar */}
       <div className="mb-6">
         <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
-          <span>{campaign.sent_count.toLocaleString()} / {campaign.total_recipients.toLocaleString()} terkirim</span>
+          <span>已发送 {campaign.sent_count.toLocaleString()} / {campaign.total_recipients.toLocaleString()}</span>
           <span>{pct}%</span>
         </div>
         <div className="bg-gray-200 rounded-full h-3">
@@ -207,10 +207,10 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
       {/* Stats cards */}
       <div className="grid grid-cols-4 gap-3 mb-6">
         {[
-          { label: 'Total', value: campaign.total_recipients, color: 'text-gray-900' },
-          { label: 'Terkirim', value: campaign.sent_count, color: 'text-green-600' },
-          { label: 'Diterima', value: campaign.delivered_count, color: 'text-blue-600' },
-          { label: 'Gagal', value: campaign.failed_count, color: 'text-red-600' },
+          { label: '总数', value: campaign.total_recipients, color: 'text-gray-900' },
+          { label: '已发送', value: campaign.sent_count, color: 'text-green-600' },
+          { label: '已送达', value: campaign.delivered_count, color: 'text-blue-600' },
+          { label: '失败', value: campaign.failed_count, color: 'text-red-600' },
         ].map((s) => (
           <div key={s.label} className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
             <p className={`text-2xl font-bold ${s.color}`}>{s.value.toLocaleString()}</p>
@@ -244,7 +244,7 @@ function CreateCampaignWizard({ onDone, onCancel }: { onDone: (c: Campaign) => v
     try {
       const { data } = await api.post('/campaigns', form);
       onDone(data);
-      toast.success('Campaign dibuat');
+      toast.success('群发活动创建成功');
     } finally {
       setSaving(false);
     }
@@ -256,7 +256,7 @@ function CreateCampaignWizard({ onDone, onCancel }: { onDone: (c: Campaign) => v
         {[1, 2, 3, 4].map((s) => (
           <div key={s} className={`flex items-center gap-1 text-sm ${step >= s ? 'text-brand-600 font-medium' : 'text-gray-400'}`}>
             <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${step >= s ? 'bg-brand-600 text-white' : 'bg-gray-200 text-gray-500'}`}>{s}</span>
-            {s === 1 ? 'Info' : s === 2 ? 'Audience' : s === 3 ? 'Jadwal' : 'Review'}
+            {s === 1 ? '基本信息' : s === 2 ? '目标人群' : s === 3 ? '发送时间' : '确认'}
           </div>
         ))}
       </div>
@@ -264,31 +264,31 @@ function CreateCampaignWizard({ onDone, onCancel }: { onDone: (c: Campaign) => v
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         {step === 1 && (
           <div className="space-y-4">
-            <h3 className="font-semibold text-gray-900">Info Campaign</h3>
+            <h3 className="font-semibold text-gray-900">群发信息</h3>
             <div>
-              <label className="text-sm text-gray-600 mb-1 block">Nama Campaign</label>
+              <label className="text-sm text-gray-600 mb-1 block">活动名称</label>
               <input
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="Promo Lebaran 2026"
+                placeholder="例如：2026 新春促销"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
             </div>
             <div>
-              <label className="text-sm text-gray-600 mb-1 block">Channel</label>
+              <label className="text-sm text-gray-600 mb-1 block">发送渠道</label>
               <select
                 value={form.channel_id}
                 onChange={(e) => setForm((f) => ({ ...f, channel_id: e.target.value }))}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none"
               >
-                <option value="">Pilih channel</option>
+                <option value="">请选择渠道</option>
                 {channels.map((c) => (
                   <option key={c.id} value={c.id}>{c.name} ({c.channel_type})</option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="text-sm text-gray-600 mb-1 block">Rate Limit (pesan/menit)</label>
+              <label className="text-sm text-gray-600 mb-1 block">发送频率限制（条/分钟）</label>
               <input
                 type="number"
                 value={form.rate_limit_per_minute}
@@ -302,7 +302,7 @@ function CreateCampaignWizard({ onDone, onCancel }: { onDone: (c: Campaign) => v
 
         {step === 2 && (
           <div className="space-y-4">
-            <h3 className="font-semibold text-gray-900">Audience</h3>
+            <h3 className="font-semibold text-gray-900">目标人群</h3>
             {(['all', 'tag', 'segment', 'upload'] as const).map((type) => (
               <label key={type} className="flex items-center gap-3 cursor-pointer border border-gray-200 rounded-lg p-3 hover:border-brand-300">
                 <input
@@ -315,13 +315,13 @@ function CreateCampaignWizard({ onDone, onCancel }: { onDone: (c: Campaign) => v
                 />
                 <div>
                   <p className="text-sm font-medium text-gray-700 capitalize">
-                    {type === 'all' ? 'Semua Contact' : type === 'tag' ? 'Berdasarkan Tag' : type === 'segment' ? 'Segment Dinamis' : 'Upload CSV'}
+                    {type === 'all' ? '全部联系人' : type === 'tag' ? '按标签筛选' : type === 'segment' ? '动态分组' : '上传 CSV'}
                   </p>
                   <p className="text-xs text-gray-400">
-                    {type === 'all' ? 'Kirim ke semua contact aktif'
-                      : type === 'tag' ? 'Filter berdasarkan tag contact'
-                      : type === 'segment' ? 'Kriteria custom berdasarkan field contact'
-                      : 'Upload file CSV berisi daftar penerima'}
+                    {type === 'all' ? '发送给所有启用中的联系人'
+                      : type === 'tag' ? '按联系人标签进行筛选'
+                      : type === 'segment' ? '基于联系人字段的自定义条件'
+                      : '上传包含接收人列表的 CSV 文件'}
                   </p>
                 </div>
               </label>
@@ -331,7 +331,7 @@ function CreateCampaignWizard({ onDone, onCancel }: { onDone: (c: Campaign) => v
 
         {step === 3 && (
           <div className="space-y-4">
-            <h3 className="font-semibold text-gray-900">Jadwal Pengiriman</h3>
+            <h3 className="font-semibold text-gray-900">发送时间</h3>
             <label className="flex items-center gap-3 cursor-pointer border border-gray-200 rounded-lg p-3 hover:border-brand-300">
               <input
                 type="radio"
@@ -341,8 +341,8 @@ function CreateCampaignWizard({ onDone, onCancel }: { onDone: (c: Campaign) => v
                 className="accent-brand-600"
               />
               <div>
-                <p className="text-sm font-medium text-gray-700">Kirim Sekarang</p>
-                <p className="text-xs text-gray-400">Campaign akan langsung dijalankan setelah di-launch</p>
+                <p className="text-sm font-medium text-gray-700">立即发送</p>
+                <p className="text-xs text-gray-400">启动后将立即开始发送</p>
               </div>
             </label>
             <label className="flex items-center gap-3 cursor-pointer border border-gray-200 rounded-lg p-3 hover:border-brand-300">
@@ -354,7 +354,7 @@ function CreateCampaignWizard({ onDone, onCancel }: { onDone: (c: Campaign) => v
                 className="accent-brand-600"
               />
               <div className="flex-1">
-                <p className="text-sm font-medium text-gray-700">Jadwalkan</p>
+                <p className="text-sm font-medium text-gray-700">定时发送</p>
                 {form.scheduled_at && (
                   <input
                     type="datetime-local"
@@ -370,13 +370,13 @@ function CreateCampaignWizard({ onDone, onCancel }: { onDone: (c: Campaign) => v
 
         {step === 4 && (
           <div className="space-y-3">
-            <h3 className="font-semibold text-gray-900">Review & Launch</h3>
+            <h3 className="font-semibold text-gray-900">确认并启动</h3>
             <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-gray-500">Nama</span><span className="font-medium">{form.name}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Channel</span><span>{channels.find((c) => c.id === form.channel_id)?.name ?? '—'}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Audience</span><span className="capitalize">{form.audience_type}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Jadwal</span><span>{form.scheduled_at || 'Sekarang'}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Rate limit</span><span>{form.rate_limit_per_minute} msg/menit</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">名称</span><span className="font-medium">{form.name}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">渠道</span><span>{channels.find((c) => c.id === form.channel_id)?.name ?? '—'}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">人群</span><span className="capitalize">{form.audience_type}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">时间</span><span>{form.scheduled_at || '立即'}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">频率限制</span><span>{form.rate_limit_per_minute} 条/分钟</span></div>
             </div>
           </div>
         )}
@@ -387,7 +387,7 @@ function CreateCampaignWizard({ onDone, onCancel }: { onDone: (c: Campaign) => v
           onClick={step === 1 ? onCancel : () => setStep((s) => s - 1)}
           className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2"
         >
-          {step === 1 ? 'Batal' : 'Kembali'}
+          {step === 1 ? '取消' : '上一步'}
         </button>
         {step < 4 ? (
           <button
@@ -395,7 +395,7 @@ function CreateCampaignWizard({ onDone, onCancel }: { onDone: (c: Campaign) => v
             disabled={step === 1 && (!form.name || !form.channel_id)}
             className="bg-brand-600 hover:bg-brand-700 text-white text-sm rounded-lg px-4 py-2 transition disabled:opacity-40"
           >
-            Lanjut
+            下一步
           </button>
         ) : (
           <button
@@ -403,7 +403,7 @@ function CreateCampaignWizard({ onDone, onCancel }: { onDone: (c: Campaign) => v
             disabled={saving}
             className="bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg px-4 py-2 transition disabled:opacity-40"
           >
-            {saving ? 'Memproses...' : 'Launch Campaign'}
+            {saving ? '创建中...' : '启动群发'}
           </button>
         )}
       </div>

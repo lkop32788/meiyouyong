@@ -7,10 +7,10 @@ import ConversationItem from './ConversationItem';
 
 type Filter = 'mine' | 'all' | 'unassigned' | 'pending';
 const FILTERS: { key: Filter; label: string }[] = [
-  { key: 'mine',       label: 'Saya' },
-  { key: 'all',        label: 'Semua' },
-  { key: 'unassigned', label: 'Belum Diassign' },
-  { key: 'pending',    label: 'Pending' },
+  { key: 'mine',       label: '我的' },
+  { key: 'all',        label: '全部' },
+  { key: 'unassigned', label: '未分配' },
+  { key: 'pending',    label: '待处理' },
 ];
 
 export default function ConversationList() {
@@ -59,7 +59,7 @@ export default function ConversationList() {
       <div className="px-3 py-2 border-b border-gray-100">
         <input
           type="text"
-          placeholder="Cari percakapan..."
+          placeholder="搜索会话..."
           value={searchQuery}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full text-sm border border-gray-200 rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-brand-500"
@@ -87,7 +87,7 @@ export default function ConversationList() {
       {/* Virtualized list */}
       <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
         {filtered.length === 0 && !isLoading && (
-          <p className="text-center text-gray-400 text-sm py-8">Tidak ada percakapan</p>
+          <p className="text-center text-gray-400 text-sm py-8">暂无会话</p>
         )}
 
         <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
@@ -110,7 +110,7 @@ export default function ConversationList() {
         </div>
 
         {isLoading && (
-          <div className="text-center py-4 text-gray-400 text-xs">Memuat...</div>
+          <div className="text-center py-4 text-gray-400 text-xs">加载中...</div>
         )}
       </div>
     </div>

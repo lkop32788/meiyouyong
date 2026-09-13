@@ -45,7 +45,7 @@ export default function MessageBubble({ message, onRetry }: Props) {
                 onClick={() => onRetry(message)}
                 className="text-red-300 underline ml-1"
               >
-                Kirim ulang
+                重新发送
               </button>
             )}
           </div>
@@ -75,14 +75,14 @@ function renderContent(message: Message) {
     case 'audio':
       return (
         <audio controls src={content.url as string} className="max-w-full">
-          Audio tidak didukung.
+          您的浏览器不支持音频播放。
         </audio>
       );
 
     case 'video':
       return (
         <video controls src={content.url as string} className="max-w-full max-h-60 rounded">
-          Video tidak didukung.
+          您的浏览器不支持视频播放。
         </video>
       );
 
@@ -108,7 +108,7 @@ function renderContent(message: Message) {
           rel="noreferrer"
           className="underline"
         >
-          📍 Lihat lokasi
+          📍 查看位置
         </a>
       );
     }
@@ -117,6 +117,6 @@ function renderContent(message: Message) {
       return <img src={content.url as string} alt="sticker" className="w-24 h-24 object-contain" />;
 
     default:
-      return <p className="italic text-xs opacity-70">[Tipe pesan tidak didukung: {contentType}]</p>;
+      return <p className="italic text-xs opacity-70">[不支持的消息类型：{contentType}]</p>;
   }
 }

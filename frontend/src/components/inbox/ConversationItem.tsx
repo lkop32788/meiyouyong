@@ -18,10 +18,10 @@ const PRIORITY_BORDER: Record<string, string> = {
 function relativeTime(iso: string | null): string {
   if (!iso) return '';
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (diff < 60)    return 'baru saja';
-  if (diff < 3600)  return `${Math.floor(diff / 60)}m`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}j`;
-  return `${Math.floor(diff / 86400)}h`;
+  if (diff < 60)    return '刚刚';
+  if (diff < 3600)  return `${Math.floor(diff / 60)}分钟前`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`;
+  return `${Math.floor(diff / 86400)}天前`;
 }
 
 interface Props {
@@ -54,7 +54,7 @@ export default function ConversationItem({ conv, isActive, currentAgentId, onCli
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
           <span className={`text-sm truncate ${isUnread ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
-            {conv.contactName ?? 'Tanpa nama'}
+            {conv.contactName ?? '未命名'}
           </span>
           <span className="text-xs text-gray-400 shrink-0">
             {relativeTime(conv.lastMessageAt)}
@@ -63,7 +63,7 @@ export default function ConversationItem({ conv, isActive, currentAgentId, onCli
 
         <div className="flex items-center justify-between gap-2 mt-0.5">
           <p className={`text-xs truncate ${isUnread ? 'text-gray-700' : 'text-gray-400'}`}>
-            {conv.lastMessageDirection === 'outbound' && <span className="text-brand-500 mr-1">Anda:</span>}
+            {conv.lastMessageDirection === 'outbound' && <span className="text-brand-500 mr-1">我：</span>}
             {conv.lastMessagePreview ?? ''}
           </p>
           {isUnread && (

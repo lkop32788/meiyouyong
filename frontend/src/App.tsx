@@ -16,10 +16,10 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 const NAV_ITEMS = [
-  { to: '/inbox',      icon: '💬', label: 'Inbox' },
-  { to: '/bot-flows',  icon: '🤖', label: 'Bot' },
-  { to: '/broadcast',  icon: '📢', label: 'Broadcast' },
-  { to: '/analytics',  icon: '📊', label: 'Analytics' },
+  { to: '/inbox',      icon: '💬', label: '收件箱' },
+  { to: '/bot-flows',  icon: '🤖', label: '机器人' },
+  { to: '/broadcast',  icon: '📢', label: '群发' },
+  { to: '/analytics',  icon: '📊', label: '分析' },
 ];
 
 function AppShell() {
@@ -50,7 +50,7 @@ function AppShell() {
 
         <button
           onClick={logout}
-          title={`Keluar (${user?.name})`}
+          title={`退出登录 (${user?.name})`}
           className="w-10 h-10 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-700 hover:text-white transition text-sm"
         >
           ⎋

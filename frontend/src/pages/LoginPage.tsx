@@ -20,7 +20,7 @@ export default function LoginPage() {
       await login(companySlug, email, password);
       navigate('/inbox');
     } catch {
-      setError('Email, password, atau company slug tidak valid.');
+      setError('邮箱、密码或企业标识不正确。');
     } finally {
       setLoading(false);
     }
@@ -39,7 +39,7 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Company Slug</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">企业标识</label>
             <input
               type="text"
               value={companySlug}
@@ -50,7 +50,7 @@ export default function LoginPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
             <input
               type="email"
               value={email}
@@ -60,7 +60,7 @@ export default function LoginPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">密码</label>
             <input
               type="password"
               value={password}
@@ -74,7 +74,7 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full bg-brand-600 hover:bg-brand-700 text-white font-medium py-2 rounded transition disabled:opacity-50"
           >
-            {loading ? 'Masuk...' : 'Masuk'}
+            {loading ? '登录中...' : '登录'}
           </button>
         </form>
       </div>

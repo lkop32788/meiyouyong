@@ -20,13 +20,13 @@ interface BotFlow {
 }
 
 const NODE_TYPES = [
-  { value: 'send_message',  label: 'Kirim Pesan' },
-  { value: 'collect_input', label: 'Kumpulkan Input' },
-  { value: 'condition',     label: 'Kondisi' },
-  { value: 'set_variable',  label: 'Set Variabel' },
-  { value: 'api_call',      label: 'API Call' },
-  { value: 'handoff',       label: 'Handoff ke Agen' },
-  { value: 'end',           label: 'Selesai' },
+  { value: 'send_message',  label: '发送消息' },
+  { value: 'collect_input', label: '收集输入' },
+  { value: 'condition',     label: '条件判断' },
+  { value: 'set_variable',  label: '设置变量' },
+  { value: 'api_call',      label: 'API 调用' },
+  { value: 'handoff',       label: '转接人工' },
+  { value: 'end',           label: '结束' },
 ];
 
 const EMPTY_FLOW: BotFlow = {
@@ -35,7 +35,7 @@ const EMPTY_FLOW: BotFlow = {
   trigger_config: { keywords: [] },
   flow_graph: {
     nodes: [
-      { id: 'start', type: 'send_message', data: { text: 'Halo! Ada yang bisa kami bantu?' } },
+      { id: 'start', type: 'send_message', data: { text: '您好！请问有什么可以帮您？' } },
       { id: 'end-1', type: 'end', data: {} },
     ],
     edges: [{ source: 'start', target: 'end-1' }],
@@ -62,16 +62,16 @@ export default function BotFlowEditorPage() {
   }, [id, isNew]);
 
   const save = async () => {
-    if (!flow.name.trim()) { toast.error('Nama flow wajib diisi'); return; }
+    if (!flow.name.trim()) { toast.error('请填写流程名称'); return; }
     setSaving(true);
     try {
       if (isNew) {
         const { data } = await api.post('/bot-flows', flow);
-        toast.success('Bot flow dibuat');
+        toast.success('Bot flow 创建成功');
         navigate(`/bot-flows/${data.id}`, { replace: true });
       } else {
         await api.put(`/bot-flows/${id}`, flow);
-        toast.success('Bot flow disimpan');
+        toast.success('Bot flow 已保存');
       }
     } finally {
       setSaving(false);
@@ -126,16 +126,16 @@ export default function BotFlowEditorPage() {
 
   const selectedNode = flow.flow_graph.nodes.find((n) => n.id === selectedNodeId);
 
-  if (loading) return <div className="p-6 text-gray-400">Memuat...</div>;
+  if (loading) return <div className="p-6 text-gray-400">加载中...</div>;
 
   return (
     <div className="flex h-full overflow-hidden">
       {/* Left panel — node tree */}
       <div className="w-64 border-r border-gray-200 bg-white flex flex-col shrink-0 overflow-hidden">
         <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Node</h3>
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">节点</h3>
           <div className="relative group">
-            <button className="text-xs text-brand-600">+ Tambah</button>
+            <button className="text-xs text-brand-600">+ 添加</button>
             <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 hidden group-hover:block min-w-[160px]">
               {NODE_TYPES.map((t) => (
                 <button
@@ -207,7 +207,7 @@ export default function BotFlowEditorPage() {
           <input
             value={flow.name}
             onChange={(e) => setFlow((f) => ({ ...f, name: e.target.value }))}
-            placeholder="Nama bot flow"
+            placeholder="机器人流程名称"
             className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
 
@@ -216,10 +216,10 @@ export default function BotFlowEditorPage() {
             onChange={(e) => setFlow((f) => ({ ...f, trigger_type: e.target.value }))}
             className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none"
           >
-            <option value="keyword">Kata Kunci</option>
-            <option value="any_message">Semua Pesan</option>
-            <option value="intent">Intent</option>
-            <option value="event">Event</option>
+            <option value="keyword">关键词</option>
+            <option value="any_message">所有消息</option>
+            <option value="intent">意图</option>
+            <option value="event">事件</option>
           </select>
 
           {flow.trigger_type === 'keyword' && (
@@ -241,7 +241,7 @@ export default function BotFlowEditorPage() {
                       setKeywordInput('');
                     }
                   }}
-                  placeholder="Tambah kata kunci (Enter)"
+                  placeholder="添加关键词（回车确认）"
                   className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none"
                 />
               </div>
@@ -273,7 +273,7 @@ export default function BotFlowEditorPage() {
           {selectedNode ? (
             <NodeEditor node={selectedNode} onChange={updateNodeData} onRemove={removeNode} onAddEdge={addEdge} nodes={flow.flow_graph.nodes} />
           ) : (
-            <p className="text-xs text-gray-400">Pilih node untuk mengedit propertinya.</p>
+            <p className="text-xs text-gray-400">选择一个节点以编辑其属性。</p>
           )}
         </div>
 
@@ -284,13 +284,13 @@ export default function BotFlowEditorPage() {
             disabled={saving}
             className="w-full bg-brand-600 hover:bg-brand-700 text-white text-sm rounded-lg py-2 transition disabled:opacity-40"
           >
-            {saving ? 'Menyimpan...' : 'Simpan Flow'}
+            {saving ? '保存中...' : '保存流程'}
           </button>
           <button
             onClick={() => navigate('/bot-flows')}
             className="w-full mt-1 text-xs text-gray-500 hover:text-gray-700 py-1"
           >
-            Kembali
+            返回列表
           </button>
         </div>
       </div>
@@ -300,13 +300,13 @@ export default function BotFlowEditorPage() {
 
 function nodeLabel(node: FlowNode): string {
   switch (node.type) {
-    case 'send_message':  return (node.data.text as string | undefined)?.slice(0, 30) || 'Kirim Pesan';
-    case 'collect_input': return `Tanya: ${node.data.variable ?? 'input'}`;
-    case 'condition':     return `Jika ${node.data.variable ?? '?'} ${node.data.operator ?? '='} ${node.data.value ?? '?'}`;
-    case 'set_variable':  return `Set ${node.data.variable ?? '?'}`;
-    case 'api_call':      return `API: ${node.data.url as string ?? ''}`.slice(0, 30);
-    case 'handoff':       return 'Handoff ke Agen';
-    case 'end':           return 'Selesai';
+    case 'send_message':  return (node.data.text as string | undefined)?.slice(0, 30) || '发送消息';
+    case 'collect_input': return `询问：${node.data.variable ?? 'input'}`;
+    case 'condition':     return `如果 ${node.data.variable ?? '?'} ${node.data.operator ?? '='} ${node.data.value ?? '?'}`;
+    case 'set_variable':  return `设置 ${node.data.variable ?? '?'}`;
+    case 'api_call':      return `API：${node.data.url as string ?? ''}`.slice(0, 30);
+    case 'handoff':       return '转接人工';
+    case 'end':           return '结束';
     default:              return node.type;
   }
 }
@@ -340,12 +340,12 @@ function NodeEditor({
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{node.type}</span>
-        <button onClick={() => onRemove(node.id)} className="text-xs text-red-500 hover:underline">Hapus</button>
+        <button onClick={() => onRemove(node.id)} className="text-xs text-red-500 hover:underline">删除</button>
       </div>
 
       {node.type === 'send_message' && (
         <div>
-          <label className="text-xs text-gray-500 mb-1 block">Teks Pesan</label>
+          <label className="text-xs text-gray-500 mb-1 block">消息文本</label>
           <textarea
             value={(node.data.text as string) ?? ''}
             onChange={(e) => onChange(node.id, 'text', e.target.value)}
@@ -358,16 +358,16 @@ function NodeEditor({
       {node.type === 'collect_input' && (
         <>
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">Nama Variabel</label>
+            <label className="text-xs text-gray-500 mb-1 block">变量名</label>
             <input
               value={(node.data.variable as string) ?? ''}
               onChange={(e) => onChange(node.id, 'variable', e.target.value)}
-              placeholder="misal: user_name"
+              placeholder="例如：user_name"
               className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none"
             />
           </div>
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">Timeout (detik)</label>
+            <label className="text-xs text-gray-500 mb-1 block">超时时间（秒）</label>
             <input
               type="number"
               value={(node.data.timeout_seconds as number) ?? ''}
@@ -389,21 +389,21 @@ function NodeEditor({
             />
           </div>
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">Operator</label>
+            <label className="text-xs text-gray-500 mb-1 block">运算符</label>
             <select
               value={(node.data.operator as string) ?? 'eq'}
               onChange={(e) => onChange(node.id, 'operator', e.target.value)}
               className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none"
             >
-              <option value="eq">= (sama)</option>
-              <option value="neq">≠ (tidak sama)</option>
-              <option value="contains">contains</option>
+              <option value="eq">=（等于）</option>
+              <option value="neq">≠（不等于）</option>
+              <option value="contains">包含</option>
               <option value="gte">≥</option>
               <option value="lte">≤</option>
             </select>
           </div>
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">Nilai</label>
+            <label className="text-xs text-gray-500 mb-1 block">值</label>
             <input
               value={(node.data.value as string) ?? ''}
               onChange={(e) => onChange(node.id, 'value', e.target.value)}
@@ -428,7 +428,7 @@ function NodeEditor({
 
       {node.type === 'handoff' && (
         <div>
-          <label className="text-xs text-gray-500 mb-1 block">Pesan Handoff</label>
+          <label className="text-xs text-gray-500 mb-1 block">转接提示语</label>
           <textarea
             value={(node.data.handoff_message as string) ?? ''}
             onChange={(e) => onChange(node.id, 'handoff_message', e.target.value)}
@@ -440,13 +440,13 @@ function NodeEditor({
 
       {/* Edge connector */}
       <div className="border-t border-gray-100 pt-3">
-        <p className="text-xs font-medium text-gray-500 mb-2">Sambungkan ke</p>
+        <p className="text-xs font-medium text-gray-500 mb-2">连接到</p>
         <select
           value={edgeTarget}
           onChange={(e) => setEdgeTarget(e.target.value)}
           className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none mb-1"
         >
-          <option value="">Pilih node tujuan</option>
+          <option value="">选择目标节点</option>
           {nodes.filter((n) => n.id !== node.id).map((n) => (
             <option key={n.id} value={n.id}>{nodeLabel(n)}</option>
           ))}
@@ -455,7 +455,7 @@ function NodeEditor({
           <input
             value={edgeLabel}
             onChange={(e) => setEdgeLabel(e.target.value)}
-            placeholder="Label (true / false)"
+            placeholder="分支标签（true / false）"
             className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none mb-1"
           />
         )}
@@ -464,7 +464,7 @@ function NodeEditor({
           onClick={() => { onAddEdge(node.id, edgeTarget, edgeLabel || undefined); setEdgeTarget(''); setEdgeLabel(''); }}
           className="w-full text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg py-1.5 transition disabled:opacity-40"
         >
-          Tambah Koneksi
+          添加连接
         </button>
       </div>
     </div>

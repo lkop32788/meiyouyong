@@ -51,7 +51,7 @@ export default function MessageList() {
       className="flex-1 overflow-y-auto px-4 py-4 bg-gray-50 flex flex-col gap-1"
     >
       {isLoadingMessages && (
-        <div className="text-center text-xs text-gray-400 py-2">Memuat pesan...</div>
+        <div className="text-center text-xs text-gray-400 py-2">加载消息中...</div>
       )}
 
       {messages.map((msg) => (

@@ -44,7 +44,7 @@ export default function ConversationHeader() {
     <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between gap-4 shrink-0">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <h2 className="font-semibold text-gray-900 truncate">{detail.contactName ?? 'Tanpa nama'}</h2>
+          <h2 className="font-semibold text-gray-900 truncate">{detail.contactName ?? '未命名'}</h2>
           <span className="text-xs bg-gray-100 text-gray-600 rounded px-1.5 py-0.5 shrink-0">
             {CHANNEL_LABEL[detail.channelType] ?? detail.channelType}
           </span>
@@ -55,7 +55,7 @@ export default function ConversationHeader() {
 
         {detail.assignedAgentName && (
           <p className="text-xs text-gray-400 mt-0.5">
-            Agen: {detail.assignedAgentName}
+            客服：{detail.assignedAgentName}
           </p>
         )}
       </div>
@@ -66,14 +66,14 @@ export default function ConversationHeader() {
             onClick={resolve}
             className="text-xs bg-green-600 hover:bg-green-700 text-white rounded px-3 py-1.5 transition"
           >
-            Selesaikan
+            完成会话
           </button>
         ) : (
           <button
             onClick={reopen}
             className="text-xs bg-blue-600 hover:bg-blue-700 text-white rounded px-3 py-1.5 transition"
           >
-            Buka Kembali
+重新打开
           </button>
         )}
       </div>

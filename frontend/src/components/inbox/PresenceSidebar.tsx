@@ -7,9 +7,9 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 const STATUS_LABEL: Record<string, string> = {
-  online: 'Online',
-  busy:   'Sibuk',
-  away:   'Away',
+  online: '在线',
+  busy:   '忙碌',
+  away:   '离开',
 };
 
 export default function PresenceSidebar() {
@@ -18,12 +18,12 @@ export default function PresenceSidebar() {
   return (
     <div className="w-56 border-l border-gray-200 bg-white flex flex-col shrink-0 overflow-hidden">
       <div className="px-3 py-2 border-b border-gray-100">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Agen Online</h3>
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">在线客服</h3>
       </div>
 
       <div className="flex-1 overflow-y-auto">
         {agents.length === 0 ? (
-          <p className="text-xs text-gray-400 px-3 py-4">Tidak ada agen online</p>
+          <p className="text-xs text-gray-400 px-3 py-4">暂无在线客服</p>
         ) : (
           agents.map((agent) => (
             <div key={agent.agentId} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50">
@@ -33,7 +33,7 @@ export default function PresenceSidebar() {
               />
               <div className="min-w-0">
                 <p className="text-xs font-medium text-gray-700 truncate">{agent.name ?? agent.agentId}</p>
-                <p className="text-[11px] text-gray-400">{agent.workload ?? 0} percakapan</p>
+                <p className="text-[11px] text-gray-400">{agent.workload ?? 0} 个会话</p>
               </div>
             </div>
           ))

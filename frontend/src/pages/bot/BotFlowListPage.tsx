@@ -27,57 +27,57 @@ export default function BotFlowListPage() {
     setFlows((prev) =>
       prev.map((f) => (f.id === flow.id ? { ...f, is_active: !f.is_active } : f))
     );
-    toast.success(flow.is_active ? 'Bot dinonaktifkan' : 'Bot diaktifkan');
+    toast.success(flow.is_active ? '机器人已停用' : '机器人已启用');
   };
 
   const duplicate = async (id: string) => {
     const { data } = await api.post(`/bot-flows/${id}/duplicate`);
     setFlows((prev) => [data, ...prev]);
-    toast.success('Bot flow diduplikat');
+    toast.success('Bot flow 已复制');
   };
 
   const remove = async (id: string) => {
-    if (!confirm('Hapus bot flow ini?')) return;
+    if (!confirm('确定删除此 Bot flow 吗？')) return;
     await api.delete(`/bot-flows/${id}`);
     setFlows((prev) => prev.filter((f) => f.id !== id));
-    toast.success('Bot flow dihapus');
+    toast.success('Bot flow 已删除');
   };
 
   const TRIGGER_LABEL: Record<string, string> = {
-    keyword: 'Kata Kunci',
-    any_message: 'Semua Pesan',
-    intent: 'Intent',
-    event: 'Event',
+    keyword: '关键词',
+    any_message: '所有消息',
+    intent: '意图',
+    event: '事件',
   };
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-bold text-gray-900">Bot Flows</h1>
+        <h1 className="text-xl font-bold text-gray-900">机器人流程</h1>
         <button
           onClick={() => navigate('/bot-flows/new')}
           className="bg-brand-600 hover:bg-brand-700 text-white text-sm rounded-lg px-4 py-2 transition"
         >
-          + Buat Bot Flow
+          + 新建机器人流程
         </button>
       </div>
 
       {loading ? (
-        <p className="text-gray-400 text-sm">Memuat...</p>
+        <p className="text-gray-400 text-sm">加载中...</p>
       ) : flows.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
-          <p className="text-lg mb-2">Belum ada bot flow</p>
-          <p className="text-sm">Buat bot flow pertama Anda untuk mengotomasi percakapan.</p>
+          <p className="text-lg mb-2">还没有机器人流程</p>
+          <p className="text-sm">创建第一个流程来自动化您的客户对话。</p>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Nama</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Trigger</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Versi</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">名称</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">触发方式</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">版本</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">状态</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -95,7 +95,7 @@ export default function BotFlowListPage() {
                           : 'bg-gray-100 text-gray-500'
                       }`}
                     >
-                      {flow.is_active ? 'Aktif' : 'Nonaktif'}
+                      {flow.is_active ? '启用' : '停用'}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -104,25 +104,25 @@ export default function BotFlowListPage() {
                         onClick={() => navigate(`/bot-flows/${flow.id}`)}
                         className="text-xs text-brand-600 hover:underline"
                       >
-                        Edit
+                        编辑
                       </button>
                       <button
                         onClick={() => toggle(flow)}
                         className="text-xs text-gray-600 hover:underline"
                       >
-                        {flow.is_active ? 'Nonaktifkan' : 'Aktifkan'}
+                        {flow.is_active ? '停用' : '启用'}
                       </button>
                       <button
                         onClick={() => duplicate(flow.id)}
                         className="text-xs text-gray-600 hover:underline"
                       >
-                        Duplikat
+                        复制
                       </button>
                       <button
                         onClick={() => remove(flow.id)}
                         className="text-xs text-red-500 hover:underline"
                       >
-                        Hapus
+                        删除
                       </button>
                     </div>
                   </td>

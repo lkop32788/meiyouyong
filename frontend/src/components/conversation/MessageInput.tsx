@@ -59,7 +59,7 @@ export default function MessageInput() {
         value={value}
         onChange={(e) => handleChange(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Ketik pesan... (Enter kirim, Shift+Enter baris baru)"
+        placeholder="输入消息...（Enter 发送，Shift+Enter 换行）"
         rows={1}
         className="flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 max-h-32 overflow-y-auto"
         style={{ minHeight: '38px' }}
@@ -69,7 +69,7 @@ export default function MessageInput() {
         disabled={!value.trim() || sending}
         className="bg-brand-600 hover:bg-brand-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition disabled:opacity-40"
       >
-        Kirim
+        发送
       </button>
     </div>
   );

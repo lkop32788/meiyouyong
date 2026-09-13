@@ -32,15 +32,15 @@ interface AgentRow {
 
 function fmt(seconds: number | null): string {
   if (seconds == null) return '—';
-  if (seconds < 60) return `${Math.round(seconds)}d`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-  return `${Math.floor(seconds / 3600)}j ${Math.round((seconds % 3600) / 60)}m`;
+  if (seconds < 60) return `${Math.round(seconds)} 秒`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)} 分钟`;
+  return `${Math.floor(seconds / 3600)} 小时 ${Math.round((seconds % 3600) / 60)} 分`;
 }
 
 const DATE_RANGES = [
-  { label: 'Hari Ini', days: 0 },
-  { label: '7 Hari', days: 7 },
-  { label: '30 Hari', days: 30 },
+  { label: '今天', days: 0 },
+  { label: '7 天', days: 7 },
+  { label: '30 天', days: 30 },
 ];
 
 export default function AnalyticsPage() {
@@ -86,7 +86,7 @@ export default function AnalyticsPage() {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shrink-0">
-        <h1 className="text-lg font-bold text-gray-900">Analytics</h1>
+        <h1 className="text-lg font-bold text-gray-900">数据分析</h1>
         <div className="flex gap-1">
           {DATE_RANGES.map((r) => (
             <button
@@ -108,23 +108,23 @@ export default function AnalyticsPage() {
             onClick={() => setTab(t)}
             className={`text-sm px-4 py-2.5 border-b-2 transition ${tab === t ? 'border-brand-600 text-brand-600 font-medium' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
           >
-            {t === 'overview' ? 'Overview' : t === 'volume' ? 'Volume' : t === 'agents' ? 'Agen' : t === 'channel' ? 'Channel' : 'SLA'}
+            {t === 'overview' ? '总览' : t === 'volume' ? '话务量' : t === 'agents' ? '客服绩效' : t === 'channel' ? '渠道' : 'SLA'}
           </button>
         ))}
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
-        {loading && <p className="text-sm text-gray-400 text-center mt-8">Memuat data...</p>}
+        {loading && <p className="text-sm text-gray-400 text-center mt-8">加载数据中...</p>}
 
         {!loading && tab === 'overview' && overview && (
           <div className="space-y-6">
             {/* KPI Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                { label: 'Total Ditangani', value: overview.total_conversations?.toLocaleString() ?? '—', sub: 'percakapan' },
-                { label: 'Avg First Response', value: fmt(overview.avg_first_response), sub: 'rata-rata' },
-                { label: 'SLA Terpenuhi', value: overview.sla_compliance_pct != null ? `${overview.sla_compliance_pct.toFixed(1)}%` : '—', sub: 'compliance' },
-                { label: 'CSAT', value: overview.csat_avg != null ? overview.csat_avg.toFixed(1) : '—', sub: 'dari 5' },
+                { label: '会话总数', value: overview.total_conversations?.toLocaleString() ?? '—', sub: '个会话' },
+                { label: '平均首次响应', value: fmt(overview.avg_first_response), sub: '平均耗时' },
+                { label: 'SLA 达标率', value: overview.sla_compliance_pct != null ? `${overview.sla_compliance_pct.toFixed(1)}%` : '—', sub: '合规率' },
+                { label: '满意度 (CSAT)', value: overview.csat_avg != null ? overview.csat_avg.toFixed(1) : '—', sub: '满分 5 分' },
               ].map((kpi) => (
                 <div key={kpi.label} className="bg-white rounded-xl border border-gray-200 p-4">
                   <p className="text-2xl font-bold text-gray-900">{kpi.value}</p>
@@ -136,14 +136,14 @@ export default function AnalyticsPage() {
 
             {/* Heatmap */}
             <div className="bg-white rounded-xl border border-gray-200 p-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Heatmap Jam Sibuk (4 minggu terakhir)</h3>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">繁忙时段热力图（最近 4 周）</h3>
               <div className="overflow-x-auto">
                 <div className="flex gap-0.5 text-[10px] text-gray-400 mb-1 ml-6">
                   {Array.from({ length: 24 }, (_, i) => (
                     <div key={i} className="w-5 text-center">{i}</div>
                   ))}
                 </div>
-                {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map((day, d) => (
+                {['周日', '周一', '周二', '周三', '周四', '周五', '周六'].map((day, d) => (
                   <div key={day} className="flex items-center gap-0.5 mb-0.5">
                     <span className="text-[10px] text-gray-400 w-6 text-right mr-0.5">{day}</span>
                     {Array.from({ length: 24 }, (_, h) => {
@@ -153,7 +153,7 @@ export default function AnalyticsPage() {
                       return (
                         <div
                           key={h}
-                          title={`${day} ${h}:00 — ${vol} percakapan`}
+                          title={`${day} ${h}:00 — ${vol} 个会话`}
                           className="w-5 h-5 rounded-sm transition"
                           style={{ backgroundColor: vol === 0 ? '#f3f4f6' : `rgba(37,99,235,${intensity / 100 * 0.85 + 0.05})` }}
                         />
@@ -168,17 +168,17 @@ export default function AnalyticsPage() {
 
         {!loading && tab === 'volume' && (
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4">Volume Percakapan per Hari</h3>
+            <h3 className="text-sm font-semibold text-gray-700 mb-4">每日会话量</h3>
             {volumeTrend.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-8">Tidak ada data</p>
+              <p className="text-sm text-gray-400 text-center py-8">暂无数据</p>
             ) : (
               <table className="w-full text-sm">
                 <thead className="border-b border-gray-100">
                   <tr className="text-left text-gray-500 text-xs">
-                    <th className="py-2 font-medium">Tanggal</th>
-                    <th className="py-2 font-medium">Total</th>
-                    <th className="py-2 font-medium">Avg First Response</th>
-                    <th className="py-2 font-medium">SLA Terpenuhi</th>
+                    <th className="py-2 font-medium">日期</th>
+                    <th className="py-2 font-medium">总数</th>
+                    <th className="py-2 font-medium">平均首次响应</th>
+                    <th className="py-2 font-medium">SLA 达标</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -199,31 +199,31 @@ export default function AnalyticsPage() {
         {!loading && tab === 'agents' && (
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-700">Performa Agen — {dateTo}</h3>
+              <h3 className="text-sm font-semibold text-gray-700">客服绩效 — {dateTo}</h3>
               <button
                 onClick={async () => {
                   await api.post('/analytics/export', { type: 'agents', date_from: dateFrom, date_to: dateTo });
-                  alert('Export sedang diproses. Silakan cek kembali dalam beberapa menit.');
+                  alert('导出任务已提交，请稍后刷新页面查看。');
                 }}
                 className="text-xs text-brand-600 hover:underline"
               >
-                Export CSV
+                导出 CSV
               </button>
             </div>
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr className="text-left text-gray-500 text-xs">
-                  <th className="px-4 py-3 font-medium">Agen</th>
-                  <th className="px-4 py-3 font-medium">Ditangani</th>
-                  <th className="px-4 py-3 font-medium">Avg Respons</th>
-                  <th className="px-4 py-3 font-medium">Avg Selesai</th>
-                  <th className="px-4 py-3 font-medium">CSAT</th>
-                  <th className="px-4 py-3 font-medium">Online</th>
+                  <th className="px-4 py-3 font-medium">客服</th>
+                  <th className="px-4 py-3 font-medium">处理量</th>
+                  <th className="px-4 py-3 font-medium">平均响应</th>
+                  <th className="px-4 py-3 font-medium">平均解决</th>
+                  <th className="px-4 py-3 font-medium">满意度</th>
+                  <th className="px-4 py-3 font-medium">在线时长</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {agents.length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400 text-sm">Tidak ada data</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400 text-sm">暂无数据</td></tr>
                 ) : agents.map((ag) => (
                   <tr key={ag.agent_id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium text-gray-900">{ag.name}</td>
@@ -246,20 +246,20 @@ export default function AnalyticsPage() {
         {!loading && tab === 'channel' && (
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100">
-              <h3 className="text-sm font-semibold text-gray-700">Breakdown per Channel</h3>
+              <h3 className="text-sm font-semibold text-gray-700">渠道分布</h3>
             </div>
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr className="text-left text-gray-500 text-xs">
-                  <th className="px-4 py-3 font-medium">Channel</th>
-                  <th className="px-4 py-3 font-medium">Total</th>
-                  <th className="px-4 py-3 font-medium">Avg First Response</th>
-                  <th className="px-4 py-3 font-medium">SLA%</th>
+                  <th className="px-4 py-3 font-medium">渠道</th>
+                  <th className="px-4 py-3 font-medium">总数</th>
+                  <th className="px-4 py-3 font-medium">平均首次响应</th>
+                  <th className="px-4 py-3 font-medium">SLA 达标率</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {channels.length === 0 ? (
-                  <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400 text-sm">Tidak ada data</td></tr>
+                  <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400 text-sm">暂无数据</td></tr>
                 ) : channels.map((ch) => (
                   <tr key={ch.channel_type} className="hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium text-gray-900 capitalize">{ch.channel_type}</td>
@@ -282,10 +282,10 @@ export default function AnalyticsPage() {
               <div>
                 <p className={`font-semibold ${breaches.length > 0 ? 'text-red-700' : 'text-green-700'}`}>
                   {breaches.length > 0
-                    ? `${breaches.length} percakapan sedang melanggar SLA`
-                    : 'Semua percakapan dalam batas SLA'}
+                    ? `${breaches.length} 个会话正在超出 SLA 时限`
+                    : '所有会话均在 SLA 时限内'}
                 </p>
-                <p className="text-xs text-gray-500 mt-0.5">Diperbarui secara real-time</p>
+                <p className="text-xs text-gray-500 mt-0.5">实时更新</p>
               </div>
             </div>
 
@@ -294,19 +294,19 @@ export default function AnalyticsPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr className="text-left text-gray-500 text-xs">
-                      <th className="px-4 py-3 font-medium">Percakapan</th>
-                      <th className="px-4 py-3 font-medium">Menunggu</th>
-                      <th className="px-4 py-3 font-medium">Threshold SLA</th>
-                      <th className="px-4 py-3 font-medium">Agen</th>
+                      <th className="px-4 py-3 font-medium">会话</th>
+                      <th className="px-4 py-3 font-medium">已等待</th>
+                      <th className="px-4 py-3 font-medium">SLA 时限</th>
+                      <th className="px-4 py-3 font-medium">客服</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {breaches.map((b) => (
                       <tr key={b.conversation_id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-gray-700 max-w-[200px] truncate">{b.last_message_preview || '(tanpa pesan)'}</td>
+                        <td className="px-4 py-3 text-gray-700 max-w-[200px] truncate">{b.last_message_preview || '（无消息）'}</td>
                         <td className="px-4 py-3 font-medium text-red-600">{fmt(b.age_seconds)}</td>
                         <td className="px-4 py-3 text-gray-500">{fmt(b.threshold_seconds)}</td>
-                        <td className="px-4 py-3 text-gray-500">{b.agent_name ?? 'Tidak ditugaskan'}</td>
+                        <td className="px-4 py-3 text-gray-500">{b.agent_name ?? '未分配'}</td>
                       </tr>
                     ))}
                   </tbody>
