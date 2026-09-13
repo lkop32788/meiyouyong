@@ -4,7 +4,7 @@ OmniClick — omnichannel customer-messaging platform (WhatsApp, Telegram, LINE,
 
 ## Quickstart
 
-Prereqs: PHP 8.3+, Composer, Node 20+, SQL Server (1433), MongoDB (27017), Redis (6379), RabbitMQ (5672). No docker-compose in repo — run infra yourself.
+Prereqs: PHP 8.3+, Composer, Node 20+, MySQL/MariaDB (3306), MongoDB (27017), Redis (6379), RabbitMQ (5672). No docker-compose in repo — run infra yourself.
 
 ```bash
 # Backend (Laravel, port 8000) — also runs queue worker, logs (pail), and vite
@@ -41,14 +41,14 @@ Key directories:
 
 - `backend/` — Laravel 13 API. `app/Services/` (BotFlowEngine, ConversationOrchestrator, OutboundMessageService, RealtimeEventPublisher, JwtService…), `app/Jobs/` (queue jobs: inbound processing, broadcast chunks, analytics rollups), `app/Models/` (multi-tenant, scoped via `app/Models/Scopes`).
 - `backend/routes/` — `api.php` (public auth + sanctum `auth:sanctum` + `tenant` middleware), `internal.php` (service-to-service, guarded by `INTERNAL_API_KEY`), `web.php`, `console.php`.
-- `gateway/` — Express webhook receiver. Flow: `routes/` (per-channel endpoints) → `middleware/verifySignature.js` (provider signature verify) → `services/channelResolver.js` (resolve channel creds) → `normalizer/` (per-channel adapters to canonical schema) → `services/publisher.js` (RabbitMQ). Shared clients in `lib/` (amqpClient, redisClient, redisKeys, sqlPool, canonicalSchema).
+- `gateway/` — Express webhook receiver. Flow: `routes/` (per-channel endpoints) → `middleware/verifySignature.js` (provider signature verify) → `services/channelResolver.js` (resolve channel creds) → `normalizer/` (per-channel adapters to canonical schema) → `services/publisher.js` (RabbitMQ). Shared clients in `lib/` (amqpClient, redisClient, redisKeys, sqlPool (mysql2), canonicalSchema).
 - `realtime-server/` — Socket.io server. `middleware/socketAuth.js` (JWT), `socket/handlers/` (connection, messaging, presence), `redis/` (subscriber + publisher — two separate Redis connections are required), `socket/rooms.js`.
 - `frontend/src/` — React SPA. `stores/` (zustand: auth, inbox, conversations, presence, socket), `lib/` (api.ts axios client, socket.ts, socketEventHandlers.ts), `pages/` (inbox, login, bot, broadcast, analytics).
 - `docs/` — phase specs (BCA, Realtime/Frontend, Webhook Gateway) and DB schema designs (`mongodb_schema.js`, `redis_key_design.js`).
 
 Data flow (inbound): provider webhook → gateway (verify → resolve → normalize) → RabbitMQ → backend `ProcessInboundMessage` (persist to MongoDB/SQL, bot flow, assignment) → `RealtimeEventPublisher` → Redis → realtime-server → Socket.io → frontend. Outbound: backend `OutboundMessageService` → channel APIs. Analytics: hourly/daily aggregation jobs.
 
-Storage: SQL Server = primary relational DB (`omnichannel`), MongoDB = message store, Redis = cache/session/realtime fanout, RabbitMQ = queue transport.
+Storage: MySQL/MariaDB = primary relational DB (`omnichannel`; gateway reads it via mysql2), MongoDB = message store, Redis = cache/session/realtime fanout, RabbitMQ = queue transport.
 
 ## Conventions
 

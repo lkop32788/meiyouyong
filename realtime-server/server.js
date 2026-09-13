@@ -1,3 +1,6 @@
+// Load .env before anything reads process.env
+import 'dotenv/config';
+
 /**
  * Phase 4A — OmniClick Realtime Server
  *

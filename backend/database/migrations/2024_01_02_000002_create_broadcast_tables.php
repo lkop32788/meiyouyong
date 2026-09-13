@@ -10,7 +10,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('message_templates', function (Blueprint $table) {
-            $table->uuid('id')->primary()->default(DB::raw('NEWID()'));
+            $table->uuid('id')->primary();
             $table->uuid('company_id');
             $table->uuid('channel_id')->nullable();
             $table->string('name', 100);
@@ -31,7 +31,7 @@ return new class extends Migration
         });
 
         Schema::create('broadcast_campaigns', function (Blueprint $table) {
-            $table->uuid('id')->primary()->default(DB::raw('NEWID()'));
+            $table->uuid('id')->primary();
             $table->uuid('company_id');
             $table->uuid('channel_id');
             $table->string('name', 150);
@@ -61,11 +61,11 @@ return new class extends Migration
         });
 
         Schema::create('audience_snapshots', function (Blueprint $table) {
-            $table->uuid('id')->primary()->default(DB::raw('NEWID()'));
+            $table->uuid('id')->primary();
             $table->uuid('campaign_id');
             $table->uuid('company_id');
             $table->integer('total_count');
-            $table->timestamp('created_at')->default(DB::raw('GETUTCDATE()'));
+            $table->timestamp('created_at')->default(DB::raw('CURRENT_TIMESTAMP'));
 
             $table->foreign('campaign_id')->references('id')->on('broadcast_campaigns');
         });

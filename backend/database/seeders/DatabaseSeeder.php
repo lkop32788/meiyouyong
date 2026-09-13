@@ -2,24 +2,22 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
     /**
      * Seed the application's database.
+     *
+     * The stock Laravel User factory does not fit this schema (UUID PKs,
+     * company_id, no email_verified_at), so bootstrap the first company +
+     * admin via AdminUserSeeder instead. Credentials come from env:
+     * ADMIN_EMAIL / ADMIN_PASSWORD (see that seeder for all options).
      */
     public function run(): void
     {
-        // User::factory(10)->create();
-
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
+        $this->call([
+            AdminUserSeeder::class,
         ]);
     }
 }

@@ -14,7 +14,7 @@
  */
 
 const { channelMetaKey } = require('../lib/redisKeys');
-const { getSqlPool, sql } = require('../lib/sqlPool');
+const { getSqlPool } = require('../lib/sqlPool');
 
 const CACHE_TTL = 300; // 5 menit
 
@@ -64,36 +64,37 @@ async function invalidateChannelCache(channelType, channelIdentifier, redis) {
 // ── SQL Query ──────────────────────────────────────────────────────────────
 
 async function queryChannelFromDB(channelType, channelIdentifier) {
-    const pool = await getSqlPool();
+    const pool = getSqlPool();
 
     // Coba dua strategi lookup:
     // 1. channelIdentifier adalah UUID langsung (id kolom)
     // 2. channelIdentifier adalah external identifier dari settings JSON
-    const result = await pool.request()
-        .input('channelType',       sql.NVarChar(30),  channelType)
-        .input('channelIdentifier', sql.NVarChar(200), channelIdentifier)
-        .query(`
-            SELECT TOP 1
+    const [rows] = await pool.query(
+        `
+            SELECT
                 id,
                 company_id,
                 is_active
             FROM channels
-            WHERE type       = @channelType
+            WHERE type       = ?
               AND deleted_at IS NULL
               AND (
                   -- Lookup by internal UUID
-                  CAST(id AS NVARCHAR(36)) = @channelIdentifier
+                  id = ?
                   OR
                   -- Lookup by external identifier in settings JSON
-                  JSON_VALUE(settings, '$.channel_identifier') = @channelIdentifier
+                  JSON_UNQUOTE(JSON_EXTRACT(settings, '$.channel_identifier')) = ?
                   OR
-                  JSON_VALUE(settings, '$.phone_number') = @channelIdentifier
+                  JSON_UNQUOTE(JSON_EXTRACT(settings, '$.phone_number')) = ?
                   OR
-                  JSON_VALUE(settings, '$.bot_id') = @channelIdentifier
+                  JSON_UNQUOTE(JSON_EXTRACT(settings, '$.bot_id')) = ?
               )
-        `);
+            LIMIT 1
+        `,
+        [channelType, channelIdentifier, channelIdentifier, channelIdentifier, channelIdentifier]
+    );
 
-    return result.recordset[0] || null;
+    return rows[0] || null;
 }
 
 module.exports = { lookupChannelByEndpoint, invalidateChannelCache };

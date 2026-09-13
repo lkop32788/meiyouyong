@@ -13,7 +13,7 @@
 
 const crypto = require('crypto');
 const { channelSecretKey } = require('../lib/redisKeys');
-const { getSqlPool, sql } = require('../lib/sqlPool');
+const { getSqlPool } = require('../lib/sqlPool');
 
 // ── Secret Resolution (Redis cache → SQL Server) ──────────────────────────
 
@@ -33,25 +33,26 @@ async function getChannelSecret(channelType, channelId, redis) {
     const cached = await redis.get(key);
     if (cached) return cached;
 
-    // 2. SQL Server fallback
-    const pool = await getSqlPool();
-    const result = await pool.request()
-        .input('channelId', sql.UniqueIdentifier, channelId)
-        .input('channelType', sql.NVarChar(30), channelType)
-        .query(`
+    // 2. MySQL fallback
+    const pool = getSqlPool();
+    const [rows] = await pool.query(
+        `
             SELECT credentials_encrypted
             FROM   channels
-            WHERE  id          = @channelId
-              AND  type        = @channelType
+            WHERE  id          = ?
+              AND  type        = ?
               AND  is_active   = 1
               AND  deleted_at  IS NULL
-        `);
+            LIMIT 1
+        `,
+        [channelId, channelType]
+    );
 
-    if (!result.recordset.length) return null;
+    if (!rows.length) return null;
 
     // Decrypt credentials (AES-256-CBC via Laravel's Crypt facade format)
     // Di gateway kita cukup ambil field 'app_secret' atau 'channel_secret' dari JSON
-    const decrypted = decryptLaravelCrypt(result.recordset[0].credentials_encrypted);
+    const decrypted = decryptLaravelCrypt(rows[0].credentials_encrypted);
     if (!decrypted) return null;
 
     const secret = decrypted.app_secret || decrypted.channel_secret || null;

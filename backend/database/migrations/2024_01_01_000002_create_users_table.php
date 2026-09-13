@@ -49,7 +49,9 @@ return new class extends Migration
         // Personal access tokens for Sanctum
         Schema::create('personal_access_tokens', function (Blueprint $table) {
             $table->id();
-            $table->morphs('tokenable');
+            // uuidMorphs: User ids are UUIDs (HasUuids); plain morphs() would
+            // create a bigint tokenable_id and token inserts would truncate.
+            $table->uuidMorphs('tokenable');
             $table->string('name');
             $table->string('token', 64)->unique();
             $table->text('abilities')->nullable();

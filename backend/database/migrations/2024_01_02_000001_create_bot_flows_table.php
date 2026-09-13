@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('bot_flows', function (Blueprint $table) {
-            $table->uuid('id')->primary()->default(DB::raw('NEWID()'));
+            $table->uuid('id')->primary();
             $table->uuid('company_id');
             $table->uuid('channel_id')->nullable();
             $table->string('name', 150);

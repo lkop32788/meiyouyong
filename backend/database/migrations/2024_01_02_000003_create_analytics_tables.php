@@ -10,7 +10,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('sla_configs', function (Blueprint $table) {
-            $table->uuid('id')->primary()->default(DB::raw('NEWID()'));
+            $table->uuid('id')->primary();
             $table->uuid('company_id');
             $table->uuid('channel_id')->nullable();
             $table->integer('first_response_seconds')->default(300);
@@ -18,7 +18,7 @@ return new class extends Migration
             $table->boolean('business_hours_only')->default(true);
             $table->longText('business_hours_config')->nullable(); // JSON
             $table->boolean('is_active')->default(true);
-            $table->timestamp('created_at')->default(DB::raw('GETUTCDATE()'));
+            $table->timestamp('created_at')->default(DB::raw('CURRENT_TIMESTAMP'));
 
             $table->foreign('company_id')->references('id')->on('companies');
             $table->unique(['company_id', 'channel_id']);
@@ -50,12 +50,13 @@ return new class extends Migration
             $table->string('resolved_month', 7)->nullable();
             $table->boolean('met_first_response_sla')->nullable();
             $table->boolean('met_resolution_sla')->nullable();
-            $table->timestamp('created_at')->default(DB::raw('GETUTCDATE()'));
+            $table->timestamp('created_at')->default(DB::raw('CURRENT_TIMESTAMP'));
 
             $table->unique(['company_id', 'conversation_id']);
             $table->index(['company_id', 'resolved_date']);
-            $table->index(['company_id', 'assigned_agent_id', 'resolved_date']);
-            $table->index(['company_id', 'channel_id', 'resolved_date']);
+            // explicit names: auto-generated ones exceed MySQL's 64-char identifier limit
+            $table->index(['company_id', 'assigned_agent_id', 'resolved_date'], 'acf_company_agent_date_index');
+            $table->index(['company_id', 'channel_id', 'resolved_date'], 'acf_company_channel_date_index');
         });
 
         Schema::create('analytics_hourly_volume', function (Blueprint $table) {
@@ -95,7 +96,7 @@ return new class extends Migration
             $table->uuid('company_id');
             $table->uuid('agent_id');
             $table->string('event', 10); // online | offline | busy | away
-            $table->dateTime('logged_at')->default(DB::raw('GETUTCDATE()'));
+            $table->dateTime('logged_at')->default(DB::raw('CURRENT_TIMESTAMP'));
 
             $table->index(['company_id', 'agent_id', 'logged_at']);
         });

@@ -1,45 +1,42 @@
 'use strict';
 
-const sql = require('mssql');
+/**
+ * MySQL/MariaDB connection pool (mysql2/promise).
+ *
+ * Replaces the former mssql/SQL Server pool. The database is the same
+ * omnichannel schema that Laravel migrates (see backend/database/migrations).
+ * Pool is lazy-singleton; first query establishes connections.
+ */
+
+const mysql = require('mysql2/promise');
 
 let _pool = null;
 
-const config = {
-    server:   process.env.DB_HOST     || 'localhost',
-    port:     parseInt(process.env.DB_PORT || '1433', 10),
-    database: process.env.DB_DATABASE || 'omnichannel',
-    user:     process.env.DB_USERNAME || 'sa',
-    password: process.env.DB_PASSWORD || '',
-    options: {
-        encrypt:                     process.env.DB_ENCRYPT === 'true',
-        trustServerCertificate:      process.env.DB_TRUST_SERVER_CERTIFICATE !== 'false',
-        enableArithAbort:            true,
-    },
-    pool: {
-        max:              10,
-        min:              2,
-        idleTimeoutMillis: 30_000,
-    },
-    connectionTimeout: 15_000,
-    requestTimeout:    15_000,
-};
+function getSqlPool() {
+    if (_pool) return _pool;
 
-/**
- * Singleton connection pool ke SQL Server.
- * Di-lazy-init pada request pertama yang memerlukan DB.
- *
- * @returns {Promise<import('mssql').ConnectionPool>}
- */
-async function getSqlPool() {
-    if (_pool && _pool.connected) return _pool;
+    _pool = mysql.createPool({
+        host:               process.env.DB_HOST     || '127.0.0.1',
+        port:               parseInt(process.env.DB_PORT || '3306', 10),
+        database:           process.env.DB_DATABASE || 'omnichannel',
+        user:               process.env.DB_USERNAME || 'omniclick',
+        password:           process.env.DB_PASSWORD || '',
+        waitForConnections: true,
+        connectionLimit:    10,
+        maxIdle:            2,
+        idleTimeout:        30_000,
+        charset:            'utf8mb4',
+        // Laravel stores UTC timestamps
+        timezone:           'Z',
+        enableKeepAlive:    true,
+    });
 
-    _pool = await new sql.ConnectionPool(config).connect();
     _pool.on('error', (err) => {
-        console.error('SQL Server pool error:', err.message);
+        console.error('MySQL pool error:', err.message);
         _pool = null;
     });
 
     return _pool;
 }
 
-module.exports = { getSqlPool, sql };
+module.exports = { getSqlPool };

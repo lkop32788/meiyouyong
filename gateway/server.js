@@ -1,5 +1,8 @@
 'use strict';
 
+// Load .env before anything reads process.env
+require('dotenv').config();
+
 /**
  * Webhook Gateway — Entry Point
  *

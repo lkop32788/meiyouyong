@@ -35,7 +35,7 @@ class JwtService
         $body = $this->b64url(json_encode($payload));
 
         $sig = $this->b64url(
-            hash_hmac('sha256', "{$header}.{$body}", $this->secret, raw_output: true)
+            hash_hmac('sha256', "{$header}.{$body}", $this->secret, binary: true)
         );
 
         return "{$header}.{$body}.{$sig}";
@@ -54,7 +54,7 @@ class JwtService
         [$header, $body, $sig] = $parts;
 
         $expected = $this->b64url(
-            hash_hmac('sha256', "{$header}.{$body}", $this->secret, raw_output: true)
+            hash_hmac('sha256', "{$header}.{$body}", $this->secret, binary: true)
         );
 
         if (! hash_equals($expected, $sig)) {

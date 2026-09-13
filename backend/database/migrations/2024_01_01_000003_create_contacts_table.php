@@ -45,7 +45,9 @@ return new class extends Migration
             $table->foreign('contact_id')->references('id')->on('contacts');
 
             // CRITICAL: enforce uniqueness for identity resolution
-            $table->unique(['company_id', 'channel_type', 'external_id']);
+            // (explicit name: MySQL caps identifiers at 64 chars and the
+            //  auto-generated name exceeds it)
+            $table->unique(['company_id', 'channel_type', 'external_id'], 'cci_company_channel_external_unique');
             $table->index(['contact_id', 'channel_type']);
         });
     }
