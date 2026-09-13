@@ -30,6 +30,9 @@ cd frontend
 npm install && cp .env.example .env
 npm run dev           # vite
 npm run build         # tsc && vite build — the typecheck gate
+
+# Production web deploy (builds frontend + atomic symlink swap to /var/www/omniclick-web)
+./deploy.sh           # rollback: ./deploy.sh rollback
 ```
 
 ## Architecture
