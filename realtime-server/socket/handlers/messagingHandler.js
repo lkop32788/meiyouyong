@@ -80,7 +80,7 @@ export function registerMessagingHandler(socket, io, redis, log) {
   });
 
   // ── auth:refresh (JWT refresh dari frontend) ──────────────────────────────
-  socket.on('auth:refresh', ({ token } = {}) => {
+  socket.on('auth:refresh', async ({ token } = {}) => {
     if (!token) {
       socket.emit('auth:error', { message: 'No token provided' });
       return;
