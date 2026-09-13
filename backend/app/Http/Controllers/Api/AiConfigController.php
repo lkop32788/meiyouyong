@@ -39,7 +39,7 @@ class AiConfigController extends Controller
     public function update(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'provider' => 'required|in:openai,deepseek,xai,gemini,anthropic,custom',
+            'provider' => 'required|in:openai,deepseek,xai,gemini,anthropic,nvidia,custom',
             'api_key'  => 'sometimes|nullable|string|max:300',
             'base_url' => 'sometimes|nullable|string|max:300',
             'model'    => 'sometimes|nullable|string|max:120',
@@ -81,6 +81,58 @@ class AiConfigController extends Controller
         } catch (Throwable $e) {
             return response()->json(['data' => ['ok' => false, 'error' => $e->getMessage()]], 200);
         }
+    }
+
+    /**
+     * Reasoning models (Nemotron, DeepSeek-R1 style) may emit <think> traces
+     * or reasoning text around the JSON. Extract the last balanced JSON object
+     * so stray braces in thinking text can't break parsing.
+     */
+    public static function extractJsonObject(string $raw): ?array
+    {
+        // Strip <think>…</think> blocks if present
+        $text = preg_replace('/<think>.*?<\/think>/is', '', $raw) ?? $raw;
+
+        // Fast path: whole payload is JSON
+        $direct = json_decode(trim($text), true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($direct)) {
+            return $direct;
+        }
+
+        // Scan for balanced {…} segments (string-aware), keep the LAST parseable one
+        $candidates = [];
+        $depth = 0;
+        $start = -1;
+        $inStr = false;
+        $esc = false;
+        $len = mb_strlen($text);
+        for ($i = 0; $i < $len; $i++) {
+            $ch = mb_substr($text, $i, 1);
+            if ($inStr) {
+                if ($esc) { $esc = false; }
+                elseif ($ch === '\\') { $esc = true; }
+                elseif ($ch === '"') { $inStr = false; }
+                continue;
+            }
+            if ($ch === '"') { $inStr = true; continue; }
+            if ($ch === '{') { if ($depth === 0) { $start = $i; } $depth++; }
+            elseif ($ch === '}' && $depth > 0) {
+                $depth--;
+                if ($depth === 0 && $start >= 0) {
+                    $candidates[] = mb_substr($text, $start, $i - $start + 1);
+                    $start = -1;
+                }
+            }
+        }
+
+        for ($i = count($candidates) - 1; $i >= 0; $i--) {
+            $obj = json_decode($candidates[$i], true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($obj)) {
+                return $obj;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -140,15 +192,10 @@ PROMPT;
             return response()->json(['message' => $e->getMessage()], 502);
         }
 
-        // The model may wrap JSON in ```json fences — strip anything non-JSON.
-        if (! preg_match('/\{.*\}/s', $raw, $m)) {
-            return response()->json(['message' => 'AI 返回的内容无法解析为流程。'], 502);
-        }
+        // Reasoning models wrap output in thinking text — extract the JSON object
+        $flow = self::extractJsonObject($raw);
 
-        $flow = json_decode($m[0], true);
-        $error = json_last_error();
-
-        if ($error !== JSON_ERROR_NONE || ! isset($flow['flow_graph']['nodes'])) {
+        if ($flow === null || ! isset($flow['flow_graph']['nodes'])) {
             Log::warning('AI flow generation produced invalid JSON', ['company_id' => $companyId]);
             return response()->json(['message' => 'AI 返回的流程结构不完整，请重试或换个描述。'], 502);
         }
@@ -246,12 +293,8 @@ PROMPT;
             return response()->json(['message' => $e->getMessage()], 502);
         }
 
-        if (! preg_match('/\{.*\}/s', $raw, $m)) {
-            return response()->json(['message' => 'AI 返回的内容无法解析。'], 502);
-        }
-
-        $gen = json_decode($m[0], true);
-        if (json_last_error() !== JSON_ERROR_NONE || ! isset($gen['nodes']) || ! is_array($gen['nodes'])) {
+        $gen = self::extractJsonObject($raw);
+        if ($gen === null || ! isset($gen['nodes']) || ! is_array($gen['nodes'])) {
             Log::warning('AI append-nodes produced invalid JSON', ['company_id' => $companyId]);
             return response()->json(['message' => 'AI 返回的节点结构不完整，请重试。'], 502);
         }

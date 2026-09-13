@@ -31,6 +31,7 @@ class AiClientService
         'xai'       => ['base_url' => 'https://api.x.ai/v1',               'model' => 'grok-3-mini',       'label' => 'xAI (Grok)'],
         'gemini'    => ['base_url' => 'https://generativelanguage.googleapis.com/v1beta/openai', 'model' => 'gemini-2.5-flash', 'label' => 'Google Gemini'],
         'anthropic' => ['base_url' => 'https://api.anthropic.com/v1',      'model' => 'claude-sonnet-4-20250514', 'label' => 'Anthropic Claude'],
+        'nvidia'    => ['base_url' => 'https://integrate.api.nvidia.com/v1', 'model' => 'nvidia/nemotron-3.5-lightning-30b-a3b', 'label' => 'NVIDIA NIM'],
         'custom'    => ['base_url' => '',                                  'model' => '',                  'label' => '自定义（OpenAI 兼容）'],
     ];
 
@@ -93,14 +94,33 @@ class AiClientService
             throw new \RuntimeException('自定义 AI 接口需要填写 Base URL。');
         }
 
+        $payload = [
+            'model'       => $cfg['model'],
+            'messages'    => $messages,
+            'temperature' => $temperature,
+            'max_tokens'  => $maxTokens,
+        ];
+
+        // NVIDIA NIM reasoning models: disable the thinking trace so responses
+        // come back fast and clean. Some NIM models reject the extra field →
+        // retry once without it.
+        if ($cfg['provider'] === 'nvidia') {
+            $payload['chat_template_kwargs'] = ['thinking' => false];
+        }
+
         $resp = Http::withToken($cfg['api_key'])
-            ->timeout(120)
-            ->post("{$cfg['base_url']}/chat/completions", [
-                'model'       => $cfg['model'],
-                'messages'    => $messages,
-                'temperature' => $temperature,
-                'max_tokens'  => $maxTokens,
-            ]);
+            ->timeout(180)
+            ->connectTimeout(15)
+            ->post("{$cfg['base_url']}/chat/completions", $payload);
+
+        if ($resp->status() === 400 && isset($payload['chat_template_kwargs'])) {
+            Log::info('NIM rejected chat_template_kwargs, retrying without it');
+            unset($payload['chat_template_kwargs']);
+            $resp = Http::withToken($cfg['api_key'])
+                ->timeout(180)
+                ->connectTimeout(15)
+                ->post("{$cfg['base_url']}/chat/completions", $payload);
+        }
 
         if ($resp->status() === 401) {
             throw new \RuntimeException('AI API Key 无效（401）。');
