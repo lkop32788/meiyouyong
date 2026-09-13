@@ -403,7 +403,9 @@ export default function ChannelsPage() {
     }
   };
 
-  // ── Channel health probes ─────────────────────────────────────────
+  // ── Channel health: automatic ─────────────────────────────────────
+  // Health is checked server-side by the watchdog (every 2 min, auto-
+  // deactivates dead channels) and each row auto-refreshes here every 60s.
   const [checkingId, setCheckingId] = useState<string | null>(null);
 
   const checkHealth = async (ch: ChannelWithHealth) => {
@@ -412,26 +414,26 @@ export default function ChannelsPage() {
       const { data } = await api.get(`/channels/${ch.id}/health`);
       const health: ChannelHealth = { status: data.status, reason: data.reason, checked_at: new Date().toISOString() };
       setChannels((rows) => rows.map((r) => (r.id === ch.id ? { ...r, settings: { ...(r.settings ?? {}), health } } : r)));
-      if (data.status === 'healthy') toast.success(`✅ ${data.reason ?? '连接正常'}`);
-      else if (data.status === 'down') toast.error(`⛔ ${data.reason ?? '连接异常'}`);
-      else toast(`⚠️ ${data.reason ?? '状态待定'}`, { icon: '⏳' });
     } catch {
-      toast.error('检测失败');
+      // silent — badge keeps last known state
     } finally {
       setCheckingId(null);
     }
   };
 
-  const checkAllHealth = async () => {
-    toast('正在检测所有渠道…', { icon: '🩺' });
-    try {
-      await api.post('/channels/health/check-all');
-      load(); // refresh rows with fresh health from settings
-      toast.success('检测完成');
-    } catch {
-      toast.error('批量检测失败');
-    }
-  };
+  // Auto-refresh loop: never-checked rows get probed immediately, and the
+  // list is silently re-fetched (health included) every 60 seconds.
+  useEffect(() => {
+    if (loading || channels.length === 0) return;
+    const timer = setInterval(() => {
+      channels.filter((c) => c.is_active && !c.settings?.health).forEach((c) => checkHealth(c));
+      api.get('/channels')
+        .then((r) => setChannels(r.data?.data ?? []))
+        .catch(() => {});
+    }, 60_000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, channels.length]);
 
   const credFields = CRED_FIELDS[form.type] ?? [];
   const quotaText = maxChannels !== null ? `${channels.length} / ${maxChannels}` : `${channels.length}`;
@@ -446,13 +448,9 @@ export default function ChannelsPage() {
           <p className="text-sm text-gray-400 mt-1">接入 WhatsApp、LINE、邮箱、Telegram 等渠道 · {quotaText}</p>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            onClick={checkAllHealth}
-            className="border border-gray-300 hover:border-brand-500 hover:text-brand-600 text-gray-600 text-sm rounded-lg px-4 py-2"
-            title="对全部启用渠道执行一次连通性检测"
-          >
-            🩺 检测全部
-          </button>
+          <span className="text-xs text-gray-400" title="系统每 2 分钟自动检测渠道连通性，连续两次异常的渠道将自动停用">
+            🩺 每 2 分钟自动检测
+          </span>
           <button
             onClick={connectFacebook}
             className="bg-[#1877F2] hover:bg-[#0e5fd8] text-white text-sm rounded-lg px-4 py-2"

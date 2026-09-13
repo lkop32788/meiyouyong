@@ -84,7 +84,18 @@ export function registerSocketHandlers(socket: Socket): () => void {
   const onAgentStatus  = (data: { agentId: string; status: 'online' | 'offline' | 'busy' | 'away' }) =>
     presence.updateStatus(data.agentId, data.status);
 
-  // ── Personal notifications ────────────────────────────────────────────────
+  // ── Channel status (auto health watchdog) ─────────────────────────────
+  const onChannelStatus = (data: { channel_name: string; health: string; reason?: string | null; deactivated?: boolean }) => {
+    if (data.deactivated) {
+      toast.error(`渠道「${data.channel_name}」异常已自动停用：${data.reason ?? '未知原因'}`, { duration: 8000 });
+    } else if (data.health === 'down') {
+      toast.error(`渠道「${data.channel_name}」连接异常：${data.reason ?? '未知原因'}`, { duration: 6000 });
+    } else if (data.health === 'healthy') {
+      toast.success(`渠道「${data.channel_name}」已恢复`);
+    }
+  };
+
+  // ── Personal notifications ───────────────────────────────────────────────
   const onConversationAssigned = (data: { conversation_id: string; contact_name?: string }) => {
     toast.success(`Percakapan baru: ${data.contact_name ?? 'Tanpa nama'}`);
     inbox.upsertConversation({ id: data.conversation_id });
@@ -126,6 +137,7 @@ export function registerSocketHandlers(socket: Socket): () => void {
 
   // Register all listeners
   socket.on('inbox:update',            onInboxUpdate);
+  socket.on('channel:status',          onChannelStatus);
   socket.on('inbox:assigned',          onInboxAssigned);
   socket.on('inbox:resolved',          onInboxResolved);
   socket.on('inbox:reopened',          onInboxReopened);

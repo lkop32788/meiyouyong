@@ -72,6 +72,30 @@ class RealtimeEventPublisher
         ]);
     }
 
+    /**
+     * Channel status changed (e.g. watchdog auto-deactivated a dead channel).
+     * Frontend listens for CHANNEL_STATUS_CHANGED to refresh badges + toast.
+     */
+    public function channelStatusChanged(
+        string $companyId,
+        string $channelId,
+        string $channelName,
+        string $healthStatus,
+        ?string $reason,
+        bool $deactivated
+    ): void {
+        $this->publish($companyId, [
+            'type'    => 'CHANNEL_STATUS_CHANGED',
+            'payload' => [
+                'channel_id'   => $channelId,
+                'channel_name' => $channelName,
+                'health'       => $healthStatus,
+                'reason'       => $reason,
+                'deactivated'  => $deactivated,
+            ],
+        ]);
+    }
+
     private function publish(string $companyId, array $event): void
     {
         Redis::publish("channel:events:{$companyId}", json_encode($event));

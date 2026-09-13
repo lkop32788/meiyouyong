@@ -116,6 +116,11 @@ export class RedisEventSubscriber {
           .emit('contact:typing', event.payload);
         break;
 
+      case 'CHANNEL_STATUS_CHANGED':
+        io.to(companyRoom(companyId))
+          .emit('channel:status', event.payload);
+        break;
+
       default:
         this.#log.debug({ companyId, type: event.type }, 'Unknown event type — ignored');
     }

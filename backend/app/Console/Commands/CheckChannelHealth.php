@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Channel;
 use App\Services\ChannelHealthService;
+use App\Services\RealtimeEventPublisher;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
@@ -26,13 +27,17 @@ class CheckChannelHealth extends Command
 {
     protected $signature = 'channels:health-check
                             {--company= : Limit to one company id}
-                            {--deactivate : Auto-deactivate channels found down}
-                            {--channel= : Check a single channel id}';
+                            {--channel= : Check a single channel id}
+                            {--no-deactivate : Do NOT auto-deactivate channels found down}
+                            {--no-notify : Do NOT push realtime status events}';
 
-    protected $description = 'Probe channel connectivity and (optionally) auto-stop dead channels';
+    protected $description = 'Probe channel connectivity; auto-stop dead channels (default) and notify';
 
-    public function handle(ChannelHealthService $health): int
+    public function handle(ChannelHealthService $health, RealtimeEventPublisher $realtime): int
     {
+        $autoDeactivate = ! $this->option('no-deactivate');
+        $notify         = ! $this->option('no-notify');
+
         $query = Channel::where('is_active', true);
 
         if ($companyId = $this->option('company')) {
@@ -53,7 +58,8 @@ class CheckChannelHealth extends Command
         $deactivated = 0;
 
         foreach ($channels as $channel) {
-            $result = $health->check($channel);
+            $previous = $channel->settings['health']['status'] ?? null;
+            $result   = $health->check($channel);
             $counts[$result['status']] = ($counts[$result['status']] ?? 0) + 1;
 
             $line = "[{$channel->type}] {$channel->name}: {$result['status']}"
@@ -73,10 +79,38 @@ class CheckChannelHealth extends Command
                 default  => null,
             };
 
-            if ($result['status'] === 'down' && $this->option('deactivate')) {
+            $wasDeactivated = false;
+
+            // Auto-stop: a channel that is down loses routing until someone
+            // fixes it and re-enables. Down on two consecutive checks avoids
+            // flapping on a single network blip.
+            if (
+                $autoDeactivate
+                && $result['status'] === 'down'
+                && $previous === 'down'
+            ) {
                 $channel->update(['is_active' => false]);
+                $wasDeactivated = true;
                 $deactivated++;
                 $this->warn("  → auto-deactivated {$channel->name}");
+
+                Log::warning('Channel auto-deactivated by health watchdog', [
+                    'channel_id' => $channel->id,
+                    'company_id' => $channel->company_id,
+                    'reason'     => $result['reason'] ?? null,
+                ]);
+            }
+
+            // Realtime toast/badge refresh for online staff on any transition
+            if ($notify && $previous !== null && $previous !== $result['status']) {
+                $realtime->channelStatusChanged(
+                    companyId:     $channel->company_id,
+                    channelId:     $channel->id,
+                    channelName:   $channel->name,
+                    healthStatus:  $result['status'],
+                    reason:        $result['reason'] ?? null,
+                    deactivated:   $wasDeactivated,
+                );
             }
         }
 
