@@ -17,6 +17,7 @@ use Throwable;
  * PUT   /api/ai-config            → update config
  * POST  /api/ai-config/test       → ping the provider with a 1-token prompt
  * POST  /api/ai/generate-flow     → natural-language description → flow_graph JSON
+ * POST  /api/ai/append-nodes      → append an AI-designed segment to an existing graph
  */
 class AiConfigController extends Controller
 {
@@ -178,5 +179,115 @@ PROMPT;
         ];
 
         return response()->json(['data' => $result]);
+    }
+
+    /**
+     * POST /api/ai/append-nodes  { nodes: FlowNode[], target?: string, instruction?: string }
+     *
+     * Given the CURRENT flow graph nodes (context) and an optional target node
+     * to splice after, asks the AI to design the NEXT segment and returns
+     * { nodes, edges } ready to merge into the editor's local state.
+     * The caller keeps ownership of saving.
+     */
+    public function appendNodes(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'nodes'        => 'required|array|min:1|max:100',
+            'nodes.*.id'   => 'required|string|max:60',
+            'nodes.*.type' => 'required|string|max:40',
+            'nodes.*.data' => 'nullable|array',
+            'target'       => 'nullable|string|max:60',
+            'instruction'  => 'nullable|string|max:1000',
+        ]);
+
+        $companyId = $request->user()->company_id;
+        $allowed   = ['send_message', 'collect_input', 'condition', 'set_variable', 'api_call', 'handoff', 'end'];
+
+        // Existing-node digest for context (id, type, short text — no payload bloat)
+        $digest = collect($data['nodes'])
+            ->map(fn ($n) => sprintf(
+                '- id=%s type=%s %s',
+                $n['id'],
+                $n['type'],
+                isset($n['data']['text']) ? 'text="' . mb_substr((string) $n['data']['text'], 0, 40) . '"' : ''
+            ))
+            ->implode("\n");
+
+        $target = collect($data['nodes'])->firstWhere('id', $data['target'] ?? null);
+        $targetLine = $target
+            ? "接入点节点：id={$target['id']} type={$target['type']}（新节点必须接在它之后）"
+            : '没有指定接入点：新节点应接在流程末尾。';
+
+        $system = <<<'PROMPT'
+你是客服机器人流程设计师。用户已有一个流程，现在要【追加】一段新节点。
+
+严格只输出一个 JSON 对象（不要 markdown、不要解释）：
+{
+  "nodes": [ { "id": "n1", "type": "send_message", "data": { "text": "..." } } ],
+  "entry_label": ""
+}
+
+节点类型只能是：send_message, collect_input, condition, set_variable, api_call, handoff, end。
+规则：
+1. 生成 2-5 个新节点，内部连线自然连贯；若流程该收尾就以 end 节点结束，否则可留待继续追加。
+2. 新节点 id 用 n1、n2…（系统会重写 id，不要复用已有节点 id）。
+3. 只生成【新增】部分，不要重复已有节点。
+4. 所有文案简体中文，语气友好专业。
+5. 按用户追加需求设计，没提的信息不要编造。
+6. entry_label 仅当接入点是 condition 节点时填 "true" 或 "false"，否则留空字符串。
+PROMPT;
+
+        try {
+            $raw = $this->ai->chat($companyId, [
+                ['role' => 'system', 'content' => $system],
+                ['role' => 'user', 'content' => "现有流程节点：\n{$digest}\n\n{$targetLine}\n\n追加需求：" . ($data['instruction'] ?? '按常理补全后续流程')],
+            ], maxTokens: 1500, temperature: 0.3);
+        } catch (Throwable $e) {
+            return response()->json(['message' => $e->getMessage()], 502);
+        }
+
+        if (! preg_match('/\{.*\}/s', $raw, $m)) {
+            return response()->json(['message' => 'AI 返回的内容无法解析。'], 502);
+        }
+
+        $gen = json_decode($m[0], true);
+        if (json_last_error() !== JSON_ERROR_NONE || ! isset($gen['nodes']) || ! is_array($gen['nodes'])) {
+            Log::warning('AI append-nodes produced invalid JSON', ['company_id' => $companyId]);
+            return response()->json(['message' => 'AI 返回的节点结构不完整，请重试。'], 502);
+        }
+
+        // Sanitize + rewrite ids to unique ai-<ts>-<i> so they can't clash
+        $ts    = time();
+        $nodes = collect($gen['nodes'])
+            ->filter(fn ($n) => is_array($n) && in_array($n['type'] ?? '', $allowed, true) && isset($n['id']))
+            ->values()
+            ->map(fn ($n, $i) => [
+                'id'   => "ai-{$ts}-{$i}",
+                'type' => $n['type'],
+                'data' => is_array($n['data'] ?? null) ? $n['data'] : [],
+            ])
+            ->all();
+
+        if (count($nodes) < 1) {
+            return response()->json(['message' => 'AI 没有生成有效节点，请换个说法。'], 502);
+        }
+
+        // Chain generated nodes in sequence internally
+        $edges = [];
+        for ($i = 0; $i < count($nodes) - 1; $i++) {
+            $edges[] = ['source' => $nodes[$i]['id'], 'target' => $nodes[$i + 1]['id']];
+        }
+
+        // If the splice point is a condition node, the entry edge gets a branch label
+        $entryLabel = null;
+        if ($target && $target['type'] === 'condition' && in_array($gen['entry_label'] ?? '', ['true', 'false'], true)) {
+            $entryLabel = $gen['entry_label'];
+        }
+
+        return response()->json(['data' => [
+            'nodes'       => $nodes,
+            'edges'       => $edges,
+            'entry_label' => $entryLabel,
+        ]]);
     }
 }

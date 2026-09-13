@@ -135,6 +135,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::put('/ai-config',        [AiConfigController::class, 'update']);
     Route::post('/ai-config/test',  [AiConfigController::class, 'test']);
     Route::post('/ai/generate-flow',[AiConfigController::class, 'generateFlow']);
+    Route::post('/ai/append-nodes', [AiConfigController::class, 'appendNodes']);
 
     // Analytics (Phase 5C)
     Route::prefix('analytics')->group(function () {

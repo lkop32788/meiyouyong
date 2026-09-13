@@ -53,6 +53,13 @@ export default function BotFlowEditorPage() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [keywordInput, setKeywordInput]     = useState('');
 
+  // AI append modal state
+  const [aiOpen, setAiOpen]           = useState(false);
+  const [aiInstruction, setAiInstruction] = useState('');
+  const [aiTarget, setAiTarget]           = useState('');
+  const [aiLoading, setAiLoading]         = useState(false);
+  const [aiPreview, setAiPreview]         = useState<{ nodes: FlowNode[]; edges: { source: string; target: string; label?: string }[]; entry_label: string | null } | null>(null);
+
   useEffect(() => {
     if (!isNew && id) {
       api.get(`/bot-flows/${id}`)
@@ -114,6 +121,62 @@ export default function BotFlowEditorPage() {
     if (selectedNodeId === nodeId) setSelectedNodeId(null);
   };
 
+  // ── AI append ──────────────────────────────────────────────────────
+  const openAiModal = () => {
+    const lastNode = flow.flow_graph.nodes[flow.flow_graph.nodes.length - 1];
+    setAiTarget(selectedNodeId ?? lastNode?.id ?? '');
+    setAiPreview(null);
+    setAiInstruction('');
+    setAiOpen(true);
+  };
+
+  const generateNodes = async () => {
+    setAiLoading(true);
+    setAiPreview(null);
+    try {
+      const { data } = await api.post('/ai/append-nodes', {
+        nodes: flow.flow_graph.nodes.map((n) => ({ id: n.id, type: n.type, data: n.data })),
+        target: aiTarget || undefined,
+        instruction: aiInstruction || undefined,
+      });
+      setAiPreview(data.data);
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(msg ?? 'AI 生成失败，请重试');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const applyAiNodes = () => {
+    if (!aiPreview || aiPreview.nodes.length === 0) return;
+    const firstId = aiPreview.nodes[0].id;
+    setFlow((f) => {
+      const newEdges = [...aiPreview.edges];
+      if (aiTarget && f.flow_graph.nodes.some((n) => n.id === aiTarget)) {
+        newEdges.push({ source: aiTarget, target: firstId, label: aiPreview.entry_label ?? undefined });
+      } else {
+        // chain from the last node without outgoing edges (flow tail)
+        const tail = [...f.flow_graph.nodes].reverse()
+          .find((n) => !f.flow_graph.edges.some((e) => e.source === n.id))
+          ?? f.flow_graph.nodes[f.flow_graph.nodes.length - 1];
+        if (tail) newEdges.push({ source: tail.id, target: firstId });
+      }
+      return {
+        ...f,
+        flow_graph: {
+          nodes: [...f.flow_graph.nodes, ...aiPreview.nodes],
+          edges: [...f.flow_graph.edges, ...newEdges],
+        },
+      };
+    });
+    setSelectedNodeId(firstId);
+    setAiOpen(false);
+    setAiPreview(null);
+    setAiInstruction('');
+    toast.success('已插入 AI 节点，检查后请点击「保存流程」');
+  };
+
   const addEdge = (source: string, target: string, label?: string) => {
     setFlow((f) => ({
       ...f,
@@ -134,8 +197,16 @@ export default function BotFlowEditorPage() {
       <div className="w-64 border-r border-gray-200 bg-white flex flex-col shrink-0 overflow-hidden">
         <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between">
           <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">节点</h3>
-          <div className="relative group">
-            <button className="text-xs text-brand-600">+ 添加</button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={openAiModal}
+              title="用 AI 追加一段节点"
+              className="text-xs text-violet-600 hover:text-violet-700"
+            >
+              ✨ AI
+            </button>
+            <div className="relative group">
+              <button className="text-xs text-brand-600">+ 添加</button>
             <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 hidden group-hover:block min-w-[160px]">
               {NODE_TYPES.map((t) => (
                 <button
@@ -146,6 +217,7 @@ export default function BotFlowEditorPage() {
                   {t.label}
                 </button>
               ))}
+            </div>
             </div>
           </div>
         </div>
@@ -294,6 +366,86 @@ export default function BotFlowEditorPage() {
           </button>
         </div>
       </div>
+
+      {/* ── AI append modal ───────────────────────────────────────── */}
+      {aiOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => !aiLoading && setAiOpen(false)}>
+          <div className="bg-white rounded-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-gray-900 mb-1">✨ AI 追加节点</h2>
+            <p className="text-xs text-gray-400 mb-4">描述要追加的内容，AI 会设计接下来的节点并接入当前流程。</p>
+
+            <label className="block text-xs text-gray-500 mb-1">接入点（新节点接在该节点之后）</label>
+            <select
+              value={aiTarget}
+              onChange={(e) => setAiTarget(e.target.value)}
+              className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 mb-3 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+            >
+              <option value="">流程末尾</option>
+              {flow.flow_graph.nodes.map((n) => (
+                <option key={n.id} value={n.id}>{nodeLabel(n)}</option>
+              ))
+              }
+            </select>
+
+            <label className="block text-xs text-gray-500 mb-1">追加需求（可选）</label>
+            <textarea
+              value={aiInstruction}
+              onChange={(e) => setAiInstruction(e.target.value)}
+              disabled={aiLoading}
+              rows={4}
+              placeholder="例如：询问订单号，如果查到物流信息就播报，否则引导联系人工客服。"
+              className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 resize-none mb-3 focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:bg-gray-50"
+            />
+
+            {!aiPreview && (
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setAiOpen(false)} disabled={aiLoading} className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-50">取消</button>
+                <button
+                  onClick={generateNodes}
+                  disabled={aiLoading}
+                  className="px-4 py-2 text-sm rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-700 hover:to-indigo-700 disabled:opacity-50"
+                >
+                  {aiLoading ? '生成中…（约 10-20 秒）' : '生成节点'}
+                  </button>
+              </div>
+            )}
+
+            {aiLoading && (
+              <div className="text-center py-6">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-violet-600" />
+                <p className="text-xs text-gray-400 mt-2">AI 正在设计节点…</p>
+              </div>
+            )}
+
+            {aiPreview && (
+              <>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-3">
+                  <p className="text-xs font-medium text-gray-700 mb-2">将插入 {aiPreview.nodes.length} 个节点：</p>
+                  <div className="space-y-1">
+                    {aiPreview.nodes.map((n) => {
+                      const icons: Record<string, string> = { send_message: '💬', collect_input: '✏️', condition: '🔀', set_variable: '📝', api_call: '🔌', handoff: '👤', end: '🏁' };
+                      const labels: Record<string, string> = { send_message: '发送消息', collect_input: '收集输入', condition: '条件判断', set_variable: '设置变量', api_call: 'API 调用', handoff: '转接人工', end: '结束' };
+                      const detail = (n.data?.text ?? n.data?.prompt ?? n.data?.url ?? '') as string;
+                      return (
+                        <div key={n.id} className="text-xs text-gray-600 flex items-center gap-1.5">
+                          <span>{icons[n.type] ?? '⚙️'}</span>
+                          <span className="text-gray-400">{labels[n.type] ?? n.type}</span>
+                          {detail && <span className="truncate">— {String(detail).slice(0, 40)}</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button onClick={generateNodes} disabled={aiLoading} className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">重新生成</button>
+                  <button onClick={() => { setAiPreview(null); }} className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">放弃</button>
+                  <button onClick={applyAiNodes} className="px-4 py-2 text-sm rounded-lg bg-brand-600 text-white hover:bg-brand-700">插入到流程</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -381,7 +533,7 @@ function NodeEditor({
       {node.type === 'condition' && (
         <>
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">Variabel</label>
+            <label className="text-xs text-gray-500 mb-1 block">变量</label>
             <input
               value={(node.data.variable as string) ?? ''}
               onChange={(e) => onChange(node.id, 'variable', e.target.value)}
@@ -416,11 +568,11 @@ function NodeEditor({
       {node.type === 'set_variable' && (
         <>
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">Variabel</label>
+            <label className="text-xs text-gray-500 mb-1 block">变量</label>
             <input value={(node.data.variable as string) ?? ''} onChange={(e) => onChange(node.id, 'variable', e.target.value)} className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none" />
           </div>
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">Nilai</label>
+            <label className="text-xs text-gray-500 mb-1 block">值</label>
             <input value={(node.data.value as string) ?? ''} onChange={(e) => onChange(node.id, 'value', e.target.value)} className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none" />
           </div>
         </>
