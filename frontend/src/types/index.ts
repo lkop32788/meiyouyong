@@ -3,7 +3,7 @@ export type ConversationStatus = 'pending' | 'open' | 'snoozed' | 'resolved';
 export type MessageDirection = 'inbound' | 'outbound';
 export type MessageStatus = 'pending' | 'sent' | 'delivered' | 'read' | 'failed';
 export type AgentStatus = 'online' | 'offline' | 'busy' | 'away';
-export type AgentRole = 'agent' | 'supervisor' | 'admin';
+export type AgentRole = 'agent' | 'supervisor' | 'admin' | 'super_admin';
 export type Priority = 'low' | 'normal' | 'high' | 'urgent';
 
 export interface AuthUser {

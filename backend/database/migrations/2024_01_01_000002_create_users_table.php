@@ -13,7 +13,7 @@ return new class extends Migration
             $table->uuid('company_id');
             $table->string('name', 100);
             $table->string('email', 150);
-            $table->string('password');
+            $table->string('password')->nullable();
             $table->string('role', 30)->default('agent'); // super_admin | admin | supervisor | agent
             $table->json('skill_tags')->nullable();
             $table->unsignedSmallInteger('max_concurrent_chats')->default(5);

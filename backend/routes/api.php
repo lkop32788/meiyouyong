@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AgentController;
 use App\Http\Controllers\Api\AnalyticsController;
 use App\Http\Controllers\Api\BotFlowController;
 use App\Http\Controllers\Api\CampaignController;
+use App\Http\Controllers\Api\ChannelController;
 use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\MessageController;
@@ -56,7 +57,18 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     });
 
     // Agents (untuk transfer dropdown, presence list)
-    Route::get('agents', [AgentController::class, 'index']);
+    Route::get('agents',    [AgentController::class, 'index']);
+    Route::post('agents',   [AgentController::class, 'store']);
+    Route::put('agents/{id}',    [AgentController::class, 'update'])->where('id', '[0-9a-f-]{36}');
+    Route::delete('agents/{id}', [AgentController::class, 'destroy'])->where('id', '[0-9a-f-]{36}');
+
+    // Channels (CRUD)
+    Route::prefix('channels')->group(function () {
+        Route::get('/',        [ChannelController::class, 'index']);
+        Route::post('/',       [ChannelController::class, 'store']);
+        Route::put('/{id}',    [ChannelController::class, 'update'])->where('id', '[0-9a-f-]{36}');
+        Route::delete('/{id}', [ChannelController::class, 'destroy'])->where('id', '[0-9a-f-]{36}');
+    });
 
     // Bot Flows (Phase 5A)
     Route::prefix('bot-flows')->group(function () {
