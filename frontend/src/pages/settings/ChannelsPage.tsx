@@ -141,6 +141,29 @@ export default function ChannelsPage() {
     setModalOpen(true);
   };
 
+  // Create a whatsapp_qr channel from the form and jump straight into the QR pairing modal
+  const createQrChannelAndScan = async () => {
+    if (!form.name.trim()) { toast.error('请先填写渠道名称'); return; }
+    setSaving(true);
+    try {
+      const { data: created } = await api.post('/channels', {
+        name: form.name,
+        type: 'whatsapp_qr',
+        provider: form.provider || null,
+        is_active: true,
+        is_inbox_enabled: true,
+      });
+      setModalOpen(false);
+      load();
+      openQrModal(created); // go straight to the QR code
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(msg ?? '创建失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const openEdit = (ch: Channel) => {
     setEditingId(ch.id);
     setForm({
@@ -558,30 +581,38 @@ export default function ChannelsPage() {
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
 
-            <label className="block text-sm text-gray-600 mb-1">
-              凭据{editingId ? '（留空保持不变）' : ''}
-            </label>
-            {credFields.length > 0 ? (
-              credFields.map((f) => (
-                <input
-                  key={f.key}
-                  type="password"
-                  value={form.cred[f.key] ?? ''}
-                  onChange={(e) => setForm({ ...form, cred: { ...form.cred, [f.key]: e.target.value } })}
-                  placeholder={f.label}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                />
-              ))
+            {form.type === 'whatsapp_qr' ? (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2.5 text-xs text-blue-700 mb-4">
+                保存后将直接弹出二维码，用手机 WhatsApp 扫码即可完成登录，无需填写任何凭据。
+              </div>
             ) : (
-              <input
-                type="password"
-                value={form.cred.api_key ?? ''}
-                onChange={(e) => setForm({ ...form, cred: { api_key: e.target.value } })}
-                placeholder="API Key"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
+              <>
+                <label className="block text-sm text-gray-600 mb-1">
+                  凭据{editingId ? '（留空保持不变）' : ''}
+                </label>
+                {credFields.length > 0 ? (
+                  credFields.map((f) => (
+                    <input
+                      key={f.key}
+                      type="password"
+                      value={form.cred[f.key] ?? ''}
+                      onChange={(e) => setForm({ ...form, cred: { ...form.cred, [f.key]: e.target.value } })}
+                      placeholder={f.label}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                  ))
+                ) : (
+                  <input
+                    type="password"
+                    value={form.cred.api_key ?? ''}
+                    onChange={(e) => setForm({ ...form, cred: { api_key: e.target.value } })}
+                    placeholder="API Key"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                )}
+                <p className="text-xs text-gray-400 mb-4">凭据将加密存储，保存后不再显示。</p>
+              </>
             )}
-            <p className="text-xs text-gray-400 mb-4">凭据将加密存储，保存后不再显示。</p>
 
             <div className="flex items-center gap-4 mb-4 text-sm">
               <label className="flex items-center gap-2 text-gray-600">
@@ -596,13 +627,23 @@ export default function ChannelsPage() {
 
             <div className="flex justify-end gap-2">
               <button onClick={() => setModalOpen(false)} className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">取消</button>
-              <button
-                onClick={submit}
-                disabled={saving}
-                className="px-4 py-2 text-sm rounded-lg bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
-              >
-                {saving ? '保存中...' : '保存'}
-              </button>
+              {form.type === 'whatsapp_qr' && !editingId ? (
+                <button
+                  onClick={createQrChannelAndScan}
+                  disabled={saving}
+                  className="px-4 py-2 text-sm rounded-lg bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
+                >
+                  {saving ? '创建中...' : '保存并显示二维码'}
+                </button>
+              ) : (
+                <button
+                  onClick={submit}
+                  disabled={saving}
+                  className="px-4 py-2 text-sm rounded-lg bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
+                >
+                  {saving ? '保存中...' : '保存'}
+                </button>
+              )}
             </div>
           </div>
         </div>
