@@ -26,6 +26,12 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // All /api/* routes return JSON
         $middleware->statefulApi();
+
+        // SPA + pure API app: there is no named `login` route to redirect
+        // guests to. Returning null makes unauthenticated API requests fall
+        // through to a 401 JSON response (rendered via shouldRenderJsonWhen)
+        // instead of throwing RouteNotFoundException.
+        $middleware->redirectGuestsTo(fn () => null);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
