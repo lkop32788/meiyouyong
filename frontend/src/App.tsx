@@ -8,6 +8,9 @@ import BotFlowListPage from './pages/bot/BotFlowListPage';
 import BotFlowEditorPage from './pages/bot/BotFlowEditorPage';
 import BroadcastPage from './pages/broadcast/BroadcastPage';
 import AnalyticsPage from './pages/analytics/AnalyticsPage';
+import ChannelsPage from './pages/settings/ChannelsPage';
+import CompanySettingsPage from './pages/settings/CompanySettingsPage';
+import AgentsSettingsPage from './pages/settings/AgentsSettingsPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -15,77 +18,127 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-const NAV_ITEMS = [
-  { to: '/inbox',      icon: '💬', label: '收件箱' },
-  { to: '/bot-flows',  icon: '🤖', label: '机器人' },
-  { to: '/broadcast',  icon: '📢', label: '群发' },
-  { to: '/analytics',  icon: '📊', label: '分析' },
-];
+interface NavItem {
+  to?: string;
+  icon: string;
+  label: string;
+  children?: NavItem[];
+}
 
-const SIDEBAR_COLLAPSED_KEY = 'omniclick-sidebar-collapsed';
+const NAV_ITEMS: NavItem[] = [
+  { to: '/inbox', icon: '💬', label: '收件箱' },
+  { to: '/bot-flows', icon: '🤖', label: '机器人' },
+  { to: '/broadcast', icon: '📢', label: '群发' },
+  { to: '/analytics', icon: '📊', label: '分析' },
+  { icon: '⚙️', label: '设置', children: [
+    { to: '/channels', icon: '📱', label: '渠道' },
+    { to: '/settings/company', icon: '🏢', label: '公司' },
+    { to: '/settings/agents', icon: '👥', label: '客服' },
+  ]},
+];
 
 function AppShell() {
   const { user, logout } = useAuthStore();
+  const [expanded, setExpanded] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Sidebar state persists across reloads
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    try { return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true'; } catch { return false; }
-  });
+  const renderNavItem = (item: NavItem, isChild = false) => {
+    if (item.to) {
+      return (
+        <NavLink
+          key={item.to}
+          to={item.to}
+          title={item.label}
+          className={({ isActive }) =>
+            `flex items-center gap-2 px-2 rounded-lg transition ${
+              isActive ? 'bg-brand-600 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+            } ${isChild ? 'text-sm py-1.5' : 'py-2'}`
+          }
+        >
+          <span className="text-lg">{item.icon}</span>
+          {expanded && <span>{item.label}</span>}
+        </NavLink>
+      );
+    }
 
-  useEffect(() => {
-    try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed)); } catch { /* private mode */ }
-  }, [collapsed]);
-
-  const itemClass = (isActive: boolean) =>
-    `h-10 rounded-lg flex items-center text-sm transition ${
-      collapsed ? 'w-10 mx-auto justify-center text-lg' : 'w-full px-3 gap-3'
-    } ${isActive ? 'bg-brand-600 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`;
+    return (
+      <div
+        key={item.label}
+        onClick={() => item.children && setSettingsOpen(!settingsOpen)}
+        className={`flex items-center gap-2 px-2 rounded-lg transition cursor-pointer text-gray-400 hover:text-white hover:bg-gray-700 ${isChild ? 'text-sm py-1.5' : 'py-2'}`}
+      >
+        <span className="text-lg">{item.icon}</span>
+        {expanded && <span>{item.label}</span>}
+        {item.children && expanded && (
+          <span className="ml-auto text-xs">{settingsOpen ? '▼' : '▶'}</span>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Sidebar nav — collapsible (icon rail ⇄ expanded with labels) */}
+      {/* Sidebar — hover 展开，悬停时显示完整菜单与子菜单 */}
       <nav
-        aria-expanded={!collapsed}
-        className={`${collapsed ? 'w-14 items-center' : 'w-48 items-stretch px-2'} bg-gray-900 flex flex-col py-3 gap-1 shrink-0 transition-all duration-200`}
+        aria-expanded={expanded}
+        className="bg-gray-900 flex flex-col py-3 shrink-0 transition-all duration-200"
+        style={{ width: expanded ? '200px' : '56px' }}
+        onMouseEnter={() => setExpanded(true)}
+        onMouseLeave={() => { setExpanded(false); setSettingsOpen(false); }}
       >
-        {/* Brand */}
-        <div className={`text-white font-black mb-3 h-8 flex items-center ${collapsed ? 'text-lg justify-center' : 'text-base px-1 gap-2'}`}>
-          <span className={collapsed ? '' : 'w-6 h-6 rounded bg-brand-600 flex items-center justify-center text-sm shrink-0'}>O</span>
-          {!collapsed && <span className="truncate">OmniClick</span>}
+        <div className={`px-3 mb-3 font-black text-white text-xl transition-opacity ${expanded ? 'opacity-100' : 'opacity-0'}`}>
+          OmniClick
+        </div>
+        {!expanded && <div className="w-10 h-10 mx-auto mb-3 bg-brand-600 rounded-lg flex items-center justify-center text-white font-bold">O</div>}
+
+        <div className="flex-1 flex flex-col gap-1 px-2 overflow-y-auto">
+          {NAV_ITEMS.map((item) => (
+            <div key={item.label}>
+              {item.children ? (
+                <>
+                  {renderNavItem(item)}
+                  {settingsOpen && expanded && item.children && (
+                    <div className="ml-4 mt-1 space-y-1 border-l border-gray-700 pl-2">
+                      {item.children.map(child => renderNavItem(child, true))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                renderNavItem(item)
+              )}
+            </div>
+          ))}
         </div>
 
-        {NAV_ITEMS.map((item) => (
-          <NavLink key={item.to} to={item.to} title={item.label} className={({ isActive }) => itemClass(isActive)}>
-            <span className="text-lg shrink-0">{item.icon}</span>
-            {!collapsed && <span className="truncate">{item.label}</span>}
-          </NavLink>
-        ))}
-
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Collapse toggle */}
-        <button
-          onClick={() => setCollapsed((c) => !c)}
-          title={collapsed ? '展开菜单' : '收起菜单'}
-          className={`h-9 rounded-lg flex items-center text-sm text-gray-400 hover:bg-gray-700 hover:text-white transition ${
-            collapsed ? 'w-10 mx-auto justify-center text-base' : 'w-full px-3 gap-3'
-          }`}
-        >
-          <span className="text-base shrink-0">{collapsed ? '»' : '«'}</span>
-          {!collapsed && <span className="truncate">收起菜单</span>}
-        </button>
-
-        <button
-          onClick={logout}
-          title={`退出登录 (${user?.name})`}
-          className={`h-10 rounded-lg flex items-center text-sm text-gray-400 hover:bg-gray-700 hover:text-white transition ${
-            collapsed ? 'w-10 mx-auto justify-center' : 'w-full px-3 gap-3'
-          }`}
-        >
-          <span className="text-lg shrink-0">⎋</span>
-          {!collapsed && <span className="truncate">退出 ({user?.name})</span>}
-        </button>
+        {/* 用户信息与退出 */}
+        <div className="px-2 mt-2 border-t border-gray-800 pt-2">
+          {expanded ? (
+            <div className="px-2 py-2 flex items-center gap-2 text-gray-400">
+              <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-sm">
+                {user?.name?.charAt(0) || 'U'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm text-white truncate">{user?.name}</div>
+                <div className="text-xs truncate">{user?.email}</div>
+              </div>
+              <button
+                onClick={logout}
+                className="p-1 hover:bg-gray-700 rounded text-gray-400 hover:text-white"
+                title="退出登录"
+              >
+                ⎋
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={logout}
+              title={`退出登录 (${user?.name})`}
+              className="w-10 h-10 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-700 hover:text-white transition"
+            >
+              ⎋
+            </button>
+          )}
+        </div>
       </nav>
 
       {/* Page content */}
@@ -114,11 +167,14 @@ export default function App() {
             </RequireAuth>
           }
         >
-          <Route path="/inbox"      element={<InboxPage />} />
-          <Route path="/bot-flows"  element={<BotFlowListPage />} />
-          <Route path="/bot-flows/:id" element={<BotFlowEditorPage />} />
-          <Route path="/broadcast"  element={<BroadcastPage />} />
-          <Route path="/analytics"  element={<AnalyticsPage />} />
+          <Route path="/inbox"            element={<InboxPage />} />
+          <Route path="/bot-flows"        element={<BotFlowListPage />} />
+          <Route path="/bot-flows/:id"    element={<BotFlowEditorPage />} />
+          <Route path="/broadcast"         element={<BroadcastPage />} />
+          <Route path="/analytics"         element={<AnalyticsPage />} />
+          <Route path="/channels"          element={<ChannelsPage />} />
+          <Route path="/settings/company"  element={<CompanySettingsPage />} />
+          <Route path="/settings/agents"   element={<AgentsSettingsPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/inbox" replace />} />
