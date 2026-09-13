@@ -24,6 +24,17 @@ interface QrStatus {
   sent_today: number;
 }
 
+interface ChannelHealth {
+  status: 'healthy' | 'degraded' | 'down' | 'unknown';
+  reason?: string | null;
+  checked_at?: string;
+}
+
+// Extend the Channel row with health info cached by the backend
+interface ChannelWithHealth extends Channel {
+  settings?: { health?: ChannelHealth } | null;
+}
+
 interface FacebookConfig {
   apps: { id: string; label: string; app_id: string; config_id?: string | null }[];
   channels: { id: string; name: string; page_id?: string | null; page_name?: string | null; is_active: boolean }[];
@@ -100,8 +111,42 @@ const EMPTY_FORM = {
   cred: {} as Record<string, string>,
 };
 
+function HealthBadge({ health, channel, onCheck, checking }: { health?: ChannelHealth; channel: ChannelWithHealth; onCheck: (ch: ChannelWithHealth) => void; checking: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const dot = !health ? 'bg-gray-300'
+    : health.status === 'healthy' ? 'bg-green-500'
+    : health.status === 'degraded' ? 'bg-yellow-400'
+    : 'bg-red-500';
+
+  const label = !health ? '未检测'
+    : health.status === 'healthy' ? '正常'
+    : health.status === 'degraded' ? '待定'
+    : '异常';
+
+  return (
+    <span className="inline-flex items-start gap-1">
+      <button
+        onClick={(e) => { e.stopPropagation(); onCheck(channel); }}
+        disabled={checking}
+        className="inline-flex items-center gap-1 text-gray-400 hover:text-brand-600 disabled:opacity-50"
+        title="点击立即检测连通性"
+      >
+        <span className={`inline-block w-1.5 h-1.5 rounded-full ${dot} ${checking ? 'animate-pulse' : ''}`} />
+        <span className="text-gray-400">{checking ? '检测中…' : label}</span>
+      </button>
+      {health?.reason && health.status !== 'healthy' && (
+        <>
+          <button onClick={() => setExpanded(!expanded)} className="text-gray-300 hover:text-gray-500">{expanded ? '▴' : '▾'}</button>
+          {expanded && <span className="text-gray-400">— {health.reason}</span>}
+        </>
+      )}
+    </span>
+  );
+}
+
 export default function ChannelsPage() {
-  const [channels, setChannels]   = useState<Channel[]>([]);
+  const [channels, setChannels]   = useState<ChannelWithHealth[]>([]);
   const [maxChannels, setMaxChannels] = useState<number | null>(null);
   const [loading, setLoading]     = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -358,6 +403,36 @@ export default function ChannelsPage() {
     }
   };
 
+  // ── Channel health probes ─────────────────────────────────────────
+  const [checkingId, setCheckingId] = useState<string | null>(null);
+
+  const checkHealth = async (ch: ChannelWithHealth) => {
+    setCheckingId(ch.id);
+    try {
+      const { data } = await api.get(`/channels/${ch.id}/health`);
+      const health: ChannelHealth = { status: data.status, reason: data.reason, checked_at: new Date().toISOString() };
+      setChannels((rows) => rows.map((r) => (r.id === ch.id ? { ...r, settings: { ...(r.settings ?? {}), health } } : r)));
+      if (data.status === 'healthy') toast.success(`✅ ${data.reason ?? '连接正常'}`);
+      else if (data.status === 'down') toast.error(`⛔ ${data.reason ?? '连接异常'}`);
+      else toast(`⚠️ ${data.reason ?? '状态待定'}`, { icon: '⏳' });
+    } catch {
+      toast.error('检测失败');
+    } finally {
+      setCheckingId(null);
+    }
+  };
+
+  const checkAllHealth = async () => {
+    toast('正在检测所有渠道…', { icon: '🩺' });
+    try {
+      await api.post('/channels/health/check-all');
+      load(); // refresh rows with fresh health from settings
+      toast.success('检测完成');
+    } catch {
+      toast.error('批量检测失败');
+    }
+  };
+
   const credFields = CRED_FIELDS[form.type] ?? [];
   const quotaText = maxChannels !== null ? `${channels.length} / ${maxChannels}` : `${channels.length}`;
 
@@ -371,6 +446,13 @@ export default function ChannelsPage() {
           <p className="text-sm text-gray-400 mt-1">接入 WhatsApp、LINE、邮箱、Telegram 等渠道 · {quotaText}</p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={checkAllHealth}
+            className="border border-gray-300 hover:border-brand-500 hover:text-brand-600 text-gray-600 text-sm rounded-lg px-4 py-2"
+            title="对全部启用渠道执行一次连通性检测"
+          >
+            🩺 检测全部
+          </button>
           <button
             onClick={connectFacebook}
             className="bg-[#1877F2] hover:bg-[#0e5fd8] text-white text-sm rounded-lg px-4 py-2"
@@ -411,8 +493,8 @@ export default function ChannelsPage() {
                 <tr key={ch.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-gray-900">
                     <span className="mr-2">{TYPE_ICON[ch.type] ?? '📱'}</span>{ch.name}
-                    <div className="text-xs text-gray-400 mt-0.5">
-                      {ch.credential_keys.length > 0 ? `凭据已配置（${ch.credential_keys.join(', ')}）` : '凭据未配置'}
+                    <div className="text-xs mt-0.5">
+                      <HealthBadge health={ch.settings?.health} channel={ch} onCheck={checkHealth} checking={checkingId === ch.id} />
                     </div>
                   </td>
                   <td className="px-4 py-3 text-gray-500">{TYPE_LABEL[ch.type] ?? ch.type}</td>

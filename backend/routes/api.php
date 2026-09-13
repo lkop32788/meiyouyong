@@ -71,6 +71,10 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::put('/{id}',    [ChannelController::class, 'update'])->where('id', '[0-9a-f-]{36}');
         Route::delete('/{id}', [ChannelController::class, 'destroy'])->where('id', '[0-9a-f-]{36}');
 
+        // Connectivity health checks (live probes per provider)
+        Route::get('/{id}/health',    [ChannelController::class, 'health']);
+        Route::post('/health/check-all', [ChannelController::class, 'healthCheckAll']);
+
         // WhatsApp QR connect flow (Baileys session proxied via gateway)
         Route::post('/{id}/qr/start',      [ChannelConnectionController::class, 'qrStart']);
         Route::get('/{id}/qr/status',      [ChannelConnectionController::class, 'qrStatus']);

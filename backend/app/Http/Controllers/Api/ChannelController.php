@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Channel;
+use App\Services\ChannelHealthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Throwable;
@@ -114,6 +115,36 @@ class ChannelController extends Controller
         $channel->save();
 
         return response()->json($this->format($channel));
+    }
+
+    /**
+     * GET /api/channels/{id}/health
+     * Run a live connectivity probe right now and return the result.
+     */
+    public function health(Request $request, string $id, ChannelHealthService $health): JsonResponse
+    {
+        $channel = Channel::where('company_id', $request->user()->company_id)
+            ->findOrFail($id);
+
+        $result = $health->check($channel);
+
+        return response()->json(['data' => [
+            'id'          => $channel->id,
+            'name'        => $channel->name,
+            'type'        => $channel->type,
+            ...$result,
+        ]]);
+    }
+
+    /**
+     * POST /api/channels/health/check-all
+     * Probe every active channel of the company; returns a summary.
+     */
+    public function healthCheckAll(Request $request, ChannelHealthService $health): JsonResponse
+    {
+        $summary = $health->checkAll($request->user()->company_id);
+
+        return response()->json(['data' => $summary]);
     }
 
     /**

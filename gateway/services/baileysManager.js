@@ -32,6 +32,12 @@ const MAX_DELAY_MS = 15000;
 
 const sessions = new Map(); // channelId -> { sock, status, qr, phone, queue, sending, ... }
 
+// QR pairing watchdog: if the QR is never scanned within this window, the
+// session is stopped automatically (socket closed, status -> qr_timeout) and
+// the channel is marked inactive. Prevents forever-refreshing QR loops and
+// abandoned sessions holding sockets open.
+const QR_TIMEOUT_MS = parseInt(process.env.WAQR_QR_TIMEOUT_MS || '120000', 10); // 2 min
+
 function getState(channelId) {
     const id = String(channelId);
     if (!sessions.has(id)) {
@@ -156,8 +162,22 @@ async function startSession(channelId, logger) {
         if (qr) {
             state.qr = qr;
             state.status = 'qr';
+            state.qrGeneratedAt = Date.now();
+            // Bail out of re-connect loops that keep re-emitting QRs
+            if (state.qrTimer) clearTimeout(state.qrTimer);
+            state.qrTimer = setTimeout(async () => {
+                if (state.status !== 'qr') return; // paired in the meantime
+                logger.warn({ channelId: id }, `[waqr] QR not scanned within ${Math.round(QR_TIMEOUT_MS / 1000)}s — stopping session`);
+                state.status = 'qr_timeout';
+                state.qr = null;
+                try { if (state.sock) { try { state.sock.ev.removeAllListeners(); } catch { /* noop */ } state.sock.end(); } } catch { /* noop */ }
+                state.sock = null;
+                try { fs.rmSync(path.join(SESSIONS_DIR, id), { recursive: true, force: true }); } catch { /* noop */ }
+                await markChannelDisconnected(id, 'qr_timeout');
+            }, QR_TIMEOUT_MS);
         }
         if (connection === 'open') {
+            if (state.qrTimer) { clearTimeout(state.qrTimer); state.qrTimer = null; }
             state.qr = null;
             state.status = 'connected';
             state.decryptFailCount = 0;
@@ -168,6 +188,7 @@ async function startSession(channelId, logger) {
             await markChannelConnected(id, state.phone);
         }
         if (connection === 'close') {
+            if (state.qrTimer) { clearTimeout(state.qrTimer); state.qrTimer = null; }
             const code = lastDisconnect?.error?.output?.statusCode;
             state.sock = null;
             if (code === DisconnectReason.loggedOut) {
@@ -176,7 +197,7 @@ async function startSession(channelId, logger) {
                 try { fs.rmSync(path.join(SESSIONS_DIR, id), { recursive: true, force: true }); } catch { /* noop */ }
                 await markChannelDisconnected(id, 'logged_out');
                 logger.info({ channelId: id }, '[waqr] logged out — session wiped');
-            } else {
+            } else if (state.status !== 'qr_timeout') {
                 state.status = 'reconnecting';
                 setTimeout(() => startSession(id, logger).catch(() => {}), 5000);
             }
