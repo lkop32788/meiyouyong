@@ -14,13 +14,41 @@ interface Channel {
   created_at?: string;
 }
 
+interface QrStatus {
+  status: string;
+  phone: string;
+  qr: string | null;
+  warmup_day: number;
+  warmup_total_days: number;
+  today_cap: number;
+  sent_today: number;
+}
+
+interface FacebookConfig {
+  app_id: string;
+  config_id?: string;
+  channels: { id: string; name: string; page_id?: string | null; page_name?: string | null; is_active: boolean }[];
+}
+
+declare global {
+  interface Window {
+    FB?: {
+      init: (opts: Record<string, unknown>) => void;
+      login: (cb: (response: { authResponse?: { code?: string } }) => void, opts: Record<string, unknown>) => void;
+    };
+    fbAsyncInit?: () => void;
+  }
+}
+
 interface CredentialField {
   key: string;
   label: string;
 }
 
 const TYPE_LABEL: Record<string, string> = {
-  whatsapp: 'WhatsApp',
+  whatsapp: 'WhatsApp（官方接口）',
+  whatsapp_qr: 'WhatsApp（扫码登录）',
+  facebook: 'Facebook Messenger',
   line: 'LINE',
   email: '邮箱',
   telegram: 'Telegram',
@@ -30,6 +58,8 @@ const TYPE_LABEL: Record<string, string> = {
 
 const TYPE_ICON: Record<string, string> = {
   whatsapp: '🟢',
+  whatsapp_qr: '📷',
+  facebook: '📘',
   line: '💚',
   email: '✉️',
   telegram: '✈️',
@@ -56,6 +86,8 @@ const CRED_FIELDS: Record<string, CredentialField[]> = {
     { key: 'api_key', label: 'Mailgun API Key' },
     { key: 'domain', label: '发送域名' },
   ],
+  facebook: [], // connected via OAuth, no manual credentials
+  whatsapp_qr: [], // connected via QR scan, session lives on the gateway
   sms: [],
   webchat: [],
 };
@@ -77,6 +109,15 @@ export default function ChannelsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm]           = useState({ ...EMPTY_FORM, cred: {} as Record<string, string> });
   const [saving, setSaving]       = useState(false);
+
+  // WhatsApp QR pairing modal state
+  const [qrChannel, setQrChannel]       = useState<Channel | null>(null);
+  const [qrStatus, setQrStatus]         = useState<QrStatus | null>(null);
+  const [qrLoading, setQrLoading]       = useState(false);
+
+  // Facebook connect state
+  const [fbConfig, setFbConfig]         = useState<FacebookConfig | null>(null);
+  const [fbPageChoice, setFbPageChoice] = useState<{ code: string; pages: { id: string; name: string }[] } | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -186,8 +227,107 @@ export default function ChannelsPage() {
     }
   };
 
+  // ── WhatsApp QR pairing ──────────────────────────────────────────────
+  const openQrModal = async (ch: Channel) => {
+    setQrChannel(ch);
+    setQrStatus(null);
+    setQrLoading(true);
+    try {
+      await api.post(`/channels/${ch.id}/qr/start`);
+      const { data } = await api.get(`/channels/${ch.id}/qr/status`);
+      setQrStatus(data.data);
+    } catch {
+      toast.error('无法启动扫码会话，请确认网关已连接');
+      setQrChannel(null);
+    } finally {
+      setQrLoading(false);
+    }
+  };
+
+  // Poll QR status while modal is open
+  useEffect(() => {
+    if (!qrChannel) return;
+    const timer = setInterval(async () => {
+      try {
+        const { data } = await api.get(`/channels/${qrChannel.id}/qr/status`);
+        setQrStatus(data.data);
+        if (data.data?.status === 'connected') {
+          toast.success(`WhatsApp 已连接（${data.data.phone}）`);
+          load();
+        }
+      } catch { /* keep polling */ }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [qrChannel, load]);
+
+  const disconnectQr = async () => {
+    if (!qrChannel) return;
+    try {
+      await api.post(`/channels/${qrChannel.id}/qr/disconnect`);
+      toast.success('已断开并清除会话');
+      setQrChannel(null);
+      setQrStatus(null);
+      load();
+    } catch {
+      toast.error('断开失败');
+    }
+  };
+
+  // ── Facebook OAuth connect ─────────────────────────────────────────
+  const connectFacebook = async () => {
+    try {
+      const { data } = await api.get('/channels/facebook/config');
+      const cfg: FacebookConfig = data.data;
+      if (!cfg?.app_id) {
+        toast.error('Facebook 登录尚未配置（需要 FACEBOOK_APP_ID）');
+        return;
+      }
+      setFbConfig(cfg);
+      // Load the SDK lazily, then open the login popup
+      if (!document.getElementById('facebook-jssdk')) {
+        const script = document.createElement('script');
+        script.id = 'facebook-jssdk';
+        script.src = 'https://connect.facebook.net/zh_CN/sdk.js';
+        document.body.appendChild(script);
+      }
+      window.fbAsyncInit = () => {
+        window.FB?.init({ appId: cfg.app_id, cookie: true, xfbml: false, version: 'v21.0' });
+        launchFbLogin(cfg);
+      };
+      if (window.FB) launchFbLogin(cfg);
+    } catch {
+      toast.error('获取 Facebook 配置失败');
+    }
+  };
+
+  const launchFbLogin = (cfg: FacebookConfig) => {
+    window.FB?.login(async (response) => {
+      const code = response?.authResponse?.code;
+      if (!code) { toast.error('Facebook 授权已取消'); return; }
+      await submitFacebookCode(code);
+    }, { scope: 'pages_show_list,pages_messaging,pages_manage_metadata', return_scopes: true });
+  };
+
+  const submitFacebookCode = async (code: string, pageId?: string) => {
+    try {
+      const { data } = await api.post('/channels/facebook/connect', { code, pageId });
+      if (data.data?.needs_page_choice) {
+        setFbPageChoice({ code, pages: data.data.pages });
+        return;
+      }
+      toast.success(`Facebook 主页「${data.data?.page_name}」已接入`);
+      setFbPageChoice(null);
+      load();
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(msg ?? 'Facebook 接入失败');
+    }
+  };
+
   const credFields = CRED_FIELDS[form.type] ?? [];
   const quotaText = maxChannels !== null ? `${channels.length} / ${maxChannels}` : `${channels.length}`;
+
+  const qrConnected = qrStatus?.status === 'connected';
 
   return (
     <div className="p-6 max-w-5xl mx-auto h-full overflow-y-auto">
@@ -252,12 +392,19 @@ export default function ChannelsPage() {
                     </button>
                   </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">
+                    {ch.type === 'whatsapp_qr' && (
+                      <button onClick={() => openQrModal(ch)} className="text-xs text-brand-600 hover:underline mr-3">
+                        {ch.is_active ? '扫码 / 管理' : '扫码登录'}
+                      </button>
+                    )}
                     {ch.webhook_url && (
                       <button onClick={() => copyWebhook(ch)} className="text-xs text-gray-500 hover:text-brand-600 mr-3" title={ch.webhook_url}>
                         复制 Webhook
                       </button>
                     )}
-                    <button onClick={() => openEdit(ch)} className="text-xs text-brand-600 hover:underline mr-3">编辑</button>
+                    {!['whatsapp_qr', 'facebook'].includes(ch.type) && (
+                      <button onClick={() => openEdit(ch)} className="text-xs text-brand-600 hover:underline mr-3">编辑</button>
+                    )}
                     <button onClick={() => remove(ch)} className="text-xs text-red-500 hover:underline">删除</button>
                   </td>
                 </tr>
@@ -266,6 +413,72 @@ export default function ChannelsPage() {
           </table>
         </div>
       )}
+
+      {/* ── WhatsApp QR pairing modal ───────────────────────────── */}
+      {qrChannel && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setQrChannel(null)}>
+          <div className="bg-white rounded-xl w-full max-w-sm p-6 text-center" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-gray-900 mb-1">WhatsApp 扫码登录</h2>
+            <p className="text-xs text-gray-400 mb-4">{qrChannel.name}</p>
+
+            {qrLoading ? (
+              <p className="text-sm text-gray-400 py-8">正在启动会话...</p>
+            ) : qrConnected ? (
+              <>
+                <div className="text-5xl mb-3">✅</div>
+                <p className="text-sm text-gray-700 font-medium mb-1">已连接：{qrStatus?.phone}</p>
+                <p className="text-xs text-gray-400 mb-4">
+                  预热期第 {qrStatus?.warmup_day}/{qrStatus?.warmup_total_days} 天 · 今日已发 {qrStatus?.sent_today}/{qrStatus?.today_cap} 条
+                </p>
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2 text-xs text-yellow-700 mb-4">
+                  扫码登录为非官方接入方式，存在封号风险，建议使用拉黑风险的测试号码。
+                </div>
+              </>
+            ) : qrStatus?.qr ? (
+              <>
+                <img src={qrStatus.qr} alt="WhatsApp QR" className="mx-auto mb-3 rounded-lg border border-gray-200" />
+                <p className="text-xs text-gray-500 mb-4">打开 WhatsApp → 设置 → 已链接的设备 → 扫描二维码</p>
+              </>
+            ) : (
+              <p className="text-sm text-gray-500 py-8">
+                {qrStatus?.status === 'rescan_needed' ? '会话已失效，请重新扫码' : '正在获取二维码...'}
+              </p>
+            )}
+
+            <div className="flex justify-center gap-2">
+              <button onClick={() => setQrChannel(null)} className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">关闭</button>
+              {qrConnected && (
+                <button onClick={disconnectQr} className="px-4 py-2 text-sm rounded-lg bg-red-500 text-white hover:bg-red-600">断开并登出</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Facebook page choice modal ───────────────────────────── */}
+      {fbPageChoice && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setFbPageChoice(null)}>
+          <div className="bg-white rounded-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-gray-900 mb-4">选择要接入的公共主页</h2>
+            <div className="space-y-2 max-h-72 overflow-y-auto mb-4">
+              {fbPageChoice.pages.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => submitFacebookCode(fbPageChoice.code, p.id)}
+                  className="w-full text-left px-4 py-2.5 rounded-lg border border-gray-200 hover:border-brand-500 hover:bg-brand-50 text-sm text-gray-700"
+                >
+                  📘 {p.name}
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-end">
+              <button onClick={() => setFbPageChoice(null)} className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">取消</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* fbConfig kept in state to avoid re-fetching during the login flow */}
+      {fbConfig && !fbPageChoice ? null : null}
 
       {modalOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setModalOpen(false)}>

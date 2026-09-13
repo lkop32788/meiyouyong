@@ -97,4 +97,45 @@ async function queryChannelFromDB(channelType, channelIdentifier) {
     return rows[0] || null;
 }
 
-module.exports = { lookupChannelByEndpoint, invalidateChannelCache };
+/**
+ * Facebook Messenger: resolve channel by page_id stored in settings JSON.
+ * Messenger webhooks are app-level, so the URL has no channelId — we map
+ * entry[].id (page id) → channel.
+ */
+async function lookupChannelByFacebookPage(pageId, redis) {
+    const cacheKey = channelMetaKey('facebook', pageId);
+
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+        const data = JSON.parse(cached);
+        return data.is_active ? data : null;
+    }
+
+    const pool = getSqlPool();
+    const [rows] = await pool.query(
+        `
+            SELECT id, company_id, is_active
+              FROM channels
+             WHERE type = 'facebook'
+               AND deleted_at IS NULL
+               AND JSON_UNQUOTE(JSON_EXTRACT(settings, '$.page_id')) = ?
+             LIMIT 1
+        `,
+        [pageId]
+    );
+
+    const row = rows[0];
+    if (!row) return null;
+
+    const payload = {
+        channel_id:   row.id,
+        company_id:   row.company_id,
+        channel_type: 'facebook',
+        is_active:    Boolean(row.is_active),
+    };
+    await redis.set(cacheKey, JSON.stringify(payload), { EX: CACHE_TTL });
+
+    return payload.is_active ? payload : null;
+}
+
+module.exports = { lookupChannelByEndpoint, lookupChannelByFacebookPage, invalidateChannelCache };

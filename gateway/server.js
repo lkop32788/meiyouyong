@@ -24,6 +24,9 @@ const whatsappRouter = require('./routes/whatsapp');
 const lineRouter = require('./routes/line');
 const emailRouter = require('./routes/email');
 const telegramRouter = require('./routes/telegram');
+const facebookRouter = require('./routes/facebook');
+const internalRouter = require('./routes/internal');
+const { restoreAll } = require('./services/baileysManager');
 
 const logger = pino({
     level: process.env.LOG_LEVEL || 'info',
@@ -46,15 +49,19 @@ async function bootstrap() {
 
     // Raw body HARUS di-capture sebelum parse JSON — untuk HMAC verification.
     // WhatsApp & LINE memerlukan raw buffer (bukan parsed object) saat verifikasi.
-    app.use(
+    // NOTE: raw() juga meng-consume stream, jadi internal API (tidak butuh HMAC)
+    // melewati raw capture — kalau tidak, json() di bawah melihat stream yang
+    // sudah dibaca dan req.body menjadi buffer/byte-object, bukan objek JSON.
+    app.use((req, res, next) => {
+        if (req.path.startsWith('/internal')) return next();
         raw({
             type: ['application/json', 'application/x-www-form-urlencoded', 'application/octet-stream'],
             limit: '10mb',
             verify: (req, _res, buf) => {
                 req.rawBody = buf;
             },
-        })
-    );
+        })(req, res, next);
+    });
     app.use(json({ limit: '10mb' }));
 
     // Request logger
@@ -86,6 +93,10 @@ async function bootstrap() {
     app.use('/webhook/line',     lineRouter);
     app.use('/webhook/email',    emailRouter);
     app.use('/webhook/telegram', telegramRouter);
+    app.use('/webhook/facebook', facebookRouter);
+
+    // Internal API (backend-only, X-Internal-Api-Key) — QR session control
+    app.use('/internal', internalRouter);
 
     // 404
     app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
@@ -99,11 +110,22 @@ async function bootstrap() {
     const PORT = parseInt(process.env.PORT || '3001', 10);
     const server = app.listen(PORT, () => {
         logger.info({ port: PORT }, 'Webhook gateway started');
+
+        // Restore previously-connected WhatsApp QR sessions (async, non-fatal)
+        restoreAll({ redis, amqpChannel }, logger)
+            .then((n) => { if (n > 0) logger.info({ restored: n }, 'WhatsApp QR sessions restored'); })
+            .catch((err) => logger.warn({ err: err.message }, 'QR session restore failed'));
     });
 
-    // ── Graceful shutdown ──────────────────────────────────────────────────────
+    // Graceful shutdown: close Baileys sockets first
     const shutdown = async (signal) => {
         logger.info({ signal }, 'Shutdown signal received');
+        try {
+            const { sessions } = require('./services/baileysManager');
+            for (const [, state] of sessions) {
+                try { if (state.sock) state.sock.end(); } catch { /* noop */ }
+            }
+        } catch { /* noop */ }
         server.close(async () => {
             try {
                 await amqpChannel.close();

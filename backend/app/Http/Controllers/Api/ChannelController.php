@@ -11,10 +11,13 @@ use Throwable;
 class ChannelController extends Controller
 {
     /** Types allowed by the channels schema. */
-    private const TYPES = ['whatsapp', 'line', 'email', 'telegram', 'sms', 'webchat'];
+    private const TYPES = ['whatsapp', 'whatsapp_qr', 'facebook', 'line', 'email', 'telegram', 'sms', 'webchat'];
 
     /** Types that receive provider webhooks (i.e. have a callback URL). */
-    private const WEBHOOK_TYPES = ['whatsapp', 'line', 'email', 'telegram'];
+    private const WEBHOOK_TYPES = ['whatsapp', 'facebook', 'line', 'email', 'telegram'];
+
+    /** Types that need no provider credentials at creation time. */
+    private const CREDENTIALLESS_TYPES = ['whatsapp_qr', 'webchat'];
 
     /**
      * GET /api/channels
@@ -51,7 +54,10 @@ class ChannelController extends Controller
             'name'                 => 'required|string|max:100',
             'type'                 => ['required', 'in:' . implode(',', self::TYPES)],
             'provider'             => 'nullable|string|max:50',
-            'credentials'          => 'required|array|min:1',
+            'credentials'          => [
+                in_array($request->input('type'), self::CREDENTIALLESS_TYPES, true) ? 'nullable' : 'required',
+                'array', 'min:1',
+            ],
             'settings'             => 'nullable|array',
             'failover_channel_ids' => 'nullable|array',
             'failover_channel_ids.*' => 'uuid',
@@ -64,11 +70,11 @@ class ChannelController extends Controller
         $channel->name                = $data['name'];
         $channel->type                = $data['type'];
         $channel->provider            = $data['provider'] ?? null;
-        $channel->settings            = $data['settings'] ?? null;
+        $channel->settings            = $data['settings'] ?? ($data['type'] === 'whatsapp_qr' ? ['waqr_status' => 'pending'] : null);
         $channel->failover_channel_ids = $data['failover_channel_ids'] ?? null;
         $channel->is_active           = $data['is_active'] ?? true;
         $channel->is_inbox_enabled    = $data['is_inbox_enabled'] ?? true;
-        $channel->setCredentials($data['credentials']);
+        $channel->setCredentials($data['credentials'] ?? ['mode' => $data['type']]);
         $channel->save();
 
         return response()->json($this->format($channel), 201);
@@ -136,6 +142,15 @@ class ChannelController extends Controller
 
         $baseUrl = rtrim((string) config('app.webhook_base_url', env('WEBHOOK_BASE_URL', 'https://webhook.37182.club')), '/');
 
+        if ($c->type === 'facebook') {
+            // Messenger webhooks are app-level (one URL, page routing in settings)
+            $webhookUrl = "{$baseUrl}/webhook/facebook/hub";
+        } elseif (in_array($c->type, self::WEBHOOK_TYPES, true)) {
+            $webhookUrl = "{$baseUrl}/webhook/{$c->type}/{$c->id}";
+        } else {
+            $webhookUrl = null; // whatsapp_qr / webchat: no inbound webhook
+        }
+
         return [
             'id'                   => $c->id,
             'name'                 => $c->name,
@@ -147,9 +162,7 @@ class ChannelController extends Controller
             'is_inbox_enabled'     => $c->is_inbox_enabled,
             'last_webhook_at'      => $c->last_webhook_at?->toISOString(),
             'credential_keys'      => $credentialKeys,
-            'webhook_url'          => in_array($c->type, self::WEBHOOK_TYPES, true)
-                ? "{$baseUrl}/webhook/{$c->type}/{$c->id}"
-                : null,
+            'webhook_url'          => $webhookUrl,
             'created_at'           => $c->created_at?->toISOString(),
         ];
     }

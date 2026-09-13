@@ -35,4 +35,17 @@ return [
         ],
     ],
 
+    // Node webhook gateway (outbound relay + QR session control)
+    'gateway' => [
+        'url'              => env('GATEWAY_URL', 'http://127.0.0.1:3001'),
+        'internal_api_key' => env('INTERNAL_API_KEY'),
+    ],
+
+    // Facebook Login (Messenger Page connect)
+    'facebook' => [
+        'app_id'     => env('FACEBOOK_APP_ID'),
+        'app_secret' => env('FACEBOOK_APP_SECRET'),
+        'config_id'  => env('FACEBOOK_CONFIG_ID'),
+    ],
+
 ];

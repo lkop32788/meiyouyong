@@ -47,7 +47,7 @@ async function setupBrokerTopology(channel) {
     await channel.assertExchange('message.status', 'topic', { durable: true });
 
     // Inbound queues per channel type
-    const channelTypes = ['whatsapp', 'line', 'email', 'telegram', 'sms'];
+    const channelTypes = ['whatsapp', 'whatsapp_qr', 'facebook', 'line', 'email', 'telegram', 'sms'];
     for (const type of channelTypes) {
         const queueName = `inbound.${type}`;
         await channel.assertQueue(queueName, {

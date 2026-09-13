@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AgentController;
 use App\Http\Controllers\Api\AnalyticsController;
 use App\Http\Controllers\Api\BotFlowController;
 use App\Http\Controllers\Api\CampaignController;
+use App\Http\Controllers\Api\ChannelConnectionController;
 use App\Http\Controllers\Api\ChannelController;
 use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\ConversationController;
@@ -68,6 +69,18 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::post('/',       [ChannelController::class, 'store']);
         Route::put('/{id}',    [ChannelController::class, 'update'])->where('id', '[0-9a-f-]{36}');
         Route::delete('/{id}', [ChannelController::class, 'destroy'])->where('id', '[0-9a-f-]{36}');
+
+        // WhatsApp QR connect flow (Baileys session proxied via gateway)
+        Route::post('/{id}/qr/start',      [ChannelConnectionController::class, 'qrStart']);
+        Route::get('/{id}/qr/status',      [ChannelConnectionController::class, 'qrStatus']);
+        Route::post('/{id}/qr/disconnect', [ChannelConnectionController::class, 'qrDisconnect']);
+        Route::post('/{id}/qr/sync',       [ChannelConnectionController::class, 'qrSync']);
+
+        // Facebook Page connect flow (OAuth)
+        Route::get('/facebook/config',    [ChannelConnectionController::class, 'facebookConfig']);
+        Route::post('/facebook/connect',  [ChannelConnectionController::class, 'facebookConnect']);
+        Route::post('/facebook/{id}/disconnect', [ChannelConnectionController::class, 'facebookDisconnect'])
+            ->where('id', '[0-9a-f-]{36}');
     });
 
     // Bot Flows (Phase 5A)
