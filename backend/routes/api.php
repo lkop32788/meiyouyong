@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\BotFlowController;
 use App\Http\Controllers\Api\CampaignController;
 use App\Http\Controllers\Api\ChannelConnectionController;
 use App\Http\Controllers\Api\ChannelController;
+use App\Http\Controllers\Api\AiConfigController;
 use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\MessageController;
@@ -128,6 +129,12 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::delete('/{id}',     [MetaAppConfigController::class, 'destroy']);
         Route::post('/{id}/verify',[MetaAppConfigController::class, 'verify']);
     });
+
+    // AI: config + flow generation
+    Route::get('/ai-config',        [AiConfigController::class, 'show']);
+    Route::put('/ai-config',        [AiConfigController::class, 'update']);
+    Route::post('/ai-config/test',  [AiConfigController::class, 'test']);
+    Route::post('/ai/generate-flow',[AiConfigController::class, 'generateFlow']);
 
     // Analytics (Phase 5C)
     Route::prefix('analytics')->group(function () {
