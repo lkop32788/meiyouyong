@@ -1,9 +1,10 @@
 import { FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import api from '../lib/api';
 import { useAuthStore } from '../stores/useAuthStore';
+import { initSocket } from '../lib/socket';
 
 export default function LoginPage() {
-  const login    = useAuthStore((s) => s.login);
   const navigate = useNavigate();
 
   const [companySlug, setCompanySlug] = useState('');
@@ -17,8 +18,31 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      await login(companySlug, email, password);
-      navigate('/inbox');
+      const { data } = await api.post('/auth/login', {
+        company_slug: companySlug,
+        email,
+        password,
+      });
+
+      const user = {
+        id:                  data.user.id,
+        name:                data.user.name,
+        email:               data.user.email,
+        role:                data.user.role,
+        companyId:           data.user.company_id,
+        skillTags:           data.user.skill_tags ?? [],
+        maxConcurrentChats:  data.user.max_concurrent_chats ?? 5,
+        avatarUrl:          data.user.avatar_url ?? null,
+        timezone:           data.user.timezone,
+      };
+
+      localStorage.setItem('auth_token', data.token);
+      localStorage.setItem('socket_token', data.socket_token);
+      useAuthStore.setState({ token: data.token, socketToken: data.socket_token, user, isAuthenticated: true });
+      initSocket(data.socket_token);
+
+      // 客服账号登录后直接进入客服聊天页面
+      navigate(data.user.role === 'agent' ? '/agent' : '/inbox');
     } catch {
       setError('邮箱、密码或手牌号码不正确。');
     } finally {

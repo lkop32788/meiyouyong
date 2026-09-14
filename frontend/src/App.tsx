@@ -26,6 +26,12 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function AgentOnly({ children }: { children: React.ReactNode }) {
+  const role = useAuthStore((s) => s.user?.role);
+  if (role !== 'agent') return <Navigate to="/inbox" replace />;
+  return <>{children}</>;
+}
+
 interface NavItem {
   to?: string;
   icon: string;
@@ -235,15 +241,9 @@ export default function App() {
 
       {/* Standalone pages — no AppShell sidebar */}
       <Routes>
-        <Route
-          element={
-            <RequireAuth>
-              <AgentChatPage />
-            </RequireAuth>
-          }
-        >
-          <Route path="/agent" element={null} />
-        </Route>
+        <Route path="/agent" element={
+          <RequireAuth><AgentOnly><AgentChatPage /></AgentOnly></RequireAuth>
+        } />
       </Routes>
     </BrowserRouter>
   );
