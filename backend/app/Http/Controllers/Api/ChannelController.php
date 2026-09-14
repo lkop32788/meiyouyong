@@ -188,6 +188,7 @@ class ChannelController extends Controller
             'type'                 => $c->type,
             'provider'             => $c->provider,
             'settings'             => $c->settings,
+            'display_phone_number' => $c->settings['display_phone_number'] ?? null,
             'failover_channel_ids' => $c->failover_channel_ids,
             'is_active'            => $c->is_active,
             'is_inbox_enabled'     => $c->is_inbox_enabled,

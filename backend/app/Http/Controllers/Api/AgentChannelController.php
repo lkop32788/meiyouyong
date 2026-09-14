@@ -31,13 +31,14 @@ class AgentChannelController extends Controller
         $rows = $query->orderByDesc('created_at')->get();
 
         return response()->json($rows->map(fn ($ac) => [
-            'id'          => $ac->id,
-            'agent_id'    => $ac->agent_id,
-            'agent_name'  => $ac->agent?->name,
-            'channel_id'  => $ac->channel_id,
-            'channel_name'=> $ac->channel?->name,
-            'channel_type'=> $ac->channel?->type,
-            'created_at'  => $ac->created_at?->toISOString(),
+            'id'                 => $ac->id,
+            'agent_id'           => $ac->agent_id,
+            'agent_name'         => $ac->agent?->name,
+            'channel_id'         => $ac->channel_id,
+            'channel_name'       => $ac->channel?->name,
+            'channel_type'       => $ac->channel?->type,
+            'display_phone'      => $ac->channel?->display_phone_number,
+            'created_at'         => $ac->created_at?->toISOString(),
         ]));
     }
 
@@ -84,11 +85,15 @@ class AgentChannelController extends Controller
             ->first();
 
         if ($existing) {
+            $existing->load('channel');
             return response()->json([
-                'id'          => $existing->id,
-                'agent_id'    => $existing->agent_id,
-                'channel_id'  => $existing->channel_id,
-                'created_at'  => $existing->created_at?->toISOString(),
+                'id'                 => $existing->id,
+                'agent_id'           => $existing->agent_id,
+                'channel_id'         => $existing->channel_id,
+                'channel_name'       => $existing->channel?->name,
+                'channel_type'       => $existing->channel?->type,
+                'display_phone'      => $existing->channel?->settings['display_phone_number'] ?? null,
+                'created_at'         => $existing->created_at?->toISOString(),
             ]);
         }
 
@@ -97,12 +102,16 @@ class AgentChannelController extends Controller
             'channel_id' => $data['channel_id'],
             'company_id' => $companyId,
         ]);
+        $ac->load('channel');
 
         return response()->json([
-            'id'          => $ac->id,
-            'agent_id'    => $ac->agent_id,
-            'channel_id'  => $ac->channel_id,
-            'created_at'  => $ac->created_at?->toISOString(),
+            'id'                 => $ac->id,
+            'agent_id'           => $ac->agent_id,
+            'channel_id'         => $ac->channel_id,
+            'channel_name'       => $ac->channel?->name,
+            'channel_type'       => $ac->channel?->type,
+            'display_phone'      => $ac->channel?->settings['display_phone_number'] ?? null,
+            'created_at'         => $ac->created_at?->toISOString(),
         ], 201);
     }
 
