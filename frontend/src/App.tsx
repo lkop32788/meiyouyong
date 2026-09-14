@@ -223,7 +223,6 @@ export default function App() {
           <Route path="/settings/ai"       element={<AiConfigPage />} />
           <Route path="/voice-agents"     element={<VoiceAgentsPage />} />
           <Route path="/contacts"         element={<ContactsPage />} />
-          <Route path="/agent"           element={<AgentChatPage />} />
           <Route path="/settings/company"  element={<CompanySettingsPage />} />
           <Route path="/settings/agents"   element={<AgentsSettingsPage />} />
           <Route path="/system"           element={<SystemDashboardPage />} />
@@ -232,6 +231,19 @@ export default function App() {
         </Route>
 
         <Route path="*" element={<Navigate to="/inbox" replace />} />
+      </Routes>
+
+      {/* Standalone pages — no AppShell sidebar */}
+      <Routes>
+        <Route
+          element={
+            <RequireAuth>
+              <AgentChatPage />
+            </RequireAuth>
+          }
+        >
+          <Route path="/agent" element={null} />
+        </Route>
       </Routes>
     </BrowserRouter>
   );
