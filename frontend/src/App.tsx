@@ -18,6 +18,7 @@ import SystemDashboardPage from './pages/system/SystemDashboardPage';
 import SystemCompaniesPage from './pages/system/SystemCompaniesPage';
 import SystemUsersPage from './pages/system/SystemUsersPage';
 import ContactsPage from './pages/contacts/ContactsPage';
+import AgentChatPage from './pages/agent/AgentChatPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -57,6 +58,7 @@ function AppShell() {
   const navItems: NavItem[] = isSuperAdmin
     ? [
         { to: '/inbox', icon: '💬', label: '收件箱' },
+        { to: '/agent', icon: '🎧', label: '客服聊天' },
         { to: '/bot-flows', icon: '🤖', label: '机器人' },
         { to: '/broadcast', icon: '📢', label: '群发' },
         { to: '/voice-agents', icon: '☎️', label: '智能外呼' },
@@ -221,6 +223,7 @@ export default function App() {
           <Route path="/settings/ai"       element={<AiConfigPage />} />
           <Route path="/voice-agents"     element={<VoiceAgentsPage />} />
           <Route path="/contacts"         element={<ContactsPage />} />
+          <Route path="/agent"           element={<AgentChatPage />} />
           <Route path="/settings/company"  element={<CompanySettingsPage />} />
           <Route path="/settings/agents"   element={<AgentsSettingsPage />} />
           <Route path="/system"           element={<SystemDashboardPage />} />
