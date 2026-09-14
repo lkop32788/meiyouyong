@@ -111,67 +111,91 @@ class ContactController extends Controller
     }
 
     /**
-     * POST /api/contacts/import — CSV bulk import
+     * POST /api/contacts/import — CSV bulk import (upsert by phone)
+     *
+     * Supports columns: name, phone, email, tags
+     * Tags can be separated by ; or |
+     * If phone already exists, updates name/email/tags instead of creating duplicate.
      */
     public function import(Request $request): JsonResponse
     {
         $request->validate([
-            'file' => 'required|file|mimes:csv,txt|max:10240', // max 10MB
+            'file' => 'required|file|mimes:csv,txt|max:10240',
         ]);
 
+        $companyId = $request->user()->company_id;
         $file = $request->file('file');
-        $handle = fopen($file->getRealPath(), 'r');
 
-        $header = fgetcsv($handle);
-        if (!$header) {
-            return response()->json(['message' => 'CSV 文件为空'], 422);
+        // Read and strip BOM
+        $content = file_get_contents($file->getRealPath());
+        $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
+        $lines = array_filter(preg_split('/\r?\n/', $content), fn($l) => trim($l) !== '');
+
+        if (count($lines) < 2) {
+            return response()->json(['message' => 'CSV 文件为空或无有效数据行'], 422);
         }
 
-        // Normalize header: trim + lowercase
-        $header = array_map(fn($h) => strtolower(trim($h)), $header);
-        $colMap = array_flip($header);
+        // Parse header row
+        $headers = array_map(
+            fn($h) => strtolower(trim(str_replace(['"', "'"], '', $h))),
+            str_getcsv($lines[0])
+        );
 
-        $imported = 0;
-        $skipped = 0;
-        $errors = [];
+        $results = ['created' => 0, 'updated' => 0, 'failed' => 0, 'errors' => []];
 
-        while (($row = fgetcsv($handle)) !== false) {
-            $phone = isset($colMap['phone']) ? trim($row[$colMap['phone']] ?? '') : '';
-            $name  = isset($colMap['name'])  ? trim($row[$colMap['name']]  ?? '') : '';
-            $email = isset($colMap['email']) ? trim($row[$colMap['email']] ?? '') : '';
-            $tagsRaw = isset($colMap['tags']) ? trim($row[$colMap['tags']] ?? '') : '';
+        // Process data rows
+        for ($i = 1; $i < count($lines); $i++) {
+            $values = array_map(
+                fn($v) => trim(str_replace(['"', "'"], '', $v)),
+                str_getcsv($lines[$i])
+            );
+            $row = array_combine($headers, $values) ?: [];
 
-            if (empty($phone) && empty($email)) {
-                $skipped++;
+            // Phone: strip non-digits, require
+            $phone = preg_replace('/[^0-9]/', '', $row['phone'] ?? '');
+            if (empty($phone)) {
+                $results['failed']++;
+                $results['errors'][] = ['row' => $i + 1, 'error' => '缺少手机号'];
                 continue;
             }
 
-            $tags = [];
-            if ($tagsRaw !== '') {
-                $tags = array_filter(array_map('trim', explode(';', $tagsRaw)));
-            }
+            $name  = trim($row['name'] ?? '') ?: 'Unknown';
+            $email = trim($row['email'] ?? '') ?: null;
+            $tagsRaw = trim($row['tags'] ?? '');
+            $tags = $tagsRaw !== ''
+                ? array_values(array_filter(array_map('trim', preg_split('/[;|]/', $tagsRaw))))
+                : [];
 
             try {
-                Contact::create([
-                    'company_id' => $request->user()->company_id,
-                    'name'      => $name ?: ($phone ?: 'Unknown'),
-                    'phone'     => $phone ?: null,
-                    'email'     => $email ?: null,
-                    'tags'      => $tags,
-                ]);
-                $imported++;
+                $existing = Contact::where('company_id', $companyId)
+                    ->where('phone', $phone)
+                    ->first();
+
+                if ($existing) {
+                    $existing->update(['name' => $name, 'email' => $email, 'tags' => $tags]);
+                    $results['updated']++;
+                } else {
+                    Contact::create([
+                        'company_id' => $companyId,
+                        'name'  => $name,
+                        'phone' => $phone,
+                        'email' => $email,
+                        'tags'  => $tags,
+                    ]);
+                    $results['created']++;
+                }
             } catch (\Throwable $e) {
-                $skipped++;
+                $results['failed']++;
+                $results['errors'][] = ['row' => $i + 1, 'phone' => $phone, 'error' => $e->getMessage()];
             }
         }
 
-        fclose($handle);
+        $msg = "导入完成：新增 {$results['created']} 条，更新 {$results['updated']} 条";
+        if ($results['failed'] > 0) {
+            $msg .= "，失败 {$results['failed']} 条";
+        }
 
-        return response()->json([
-            'message'  => "导入完成：新增 {$imported} 条，跳过 {$skipped} 条",
-            'imported' => $imported,
-            'skipped'  => $skipped,
-        ]);
+        return response()->json(['message' => $msg, 'data' => $results]);
     }
 
     /**
@@ -179,26 +203,23 @@ class ContactController extends Controller
      */
     public function export(Request $request)
     {
-        $companyId = $request->user()->company_id;
-
-        $contacts = Contact::where('company_id', $companyId)
+        $contacts = Contact::where('company_id', $request->user()->company_id)
             ->orderByDesc('created_at')
             ->get(['name', 'phone', 'email', 'tags', 'created_at']);
 
-        $rows = [['name', 'phone', 'email', 'tags', 'created_at']];
-        foreach ($contacts as $c) {
-            $rows[] = [
-                $c->name,
-                $c->phone ?? '',
-                $c->email ?? '',
-                implode(';', $c->tags ?? []),
-                $c->created_at?->toDateTimeString() ?? '',
-            ];
-        }
+        $esc = fn($v) => '"' . str_replace('"', '""', (string) ($v ?? '')) . '"';
 
-        $csv = '';
-        foreach ($rows as $row) {
-            $csv .= "\xEF\xBB\xBF" . implode(',', array_map(fn($v) => '"' . str_replace('"', '""', $v) . '"', $row)) . "\n";
+        // BOM only once at the start
+        $csv = "\xEF\xBB\xBFName,Phone,Email,Tags,Created At\n";
+
+        foreach ($contacts as $c) {
+            $csv .= implode(',', [
+                $esc($c->name),
+                $esc($c->phone ?? ''),
+                $esc($c->email ?? ''),
+                $esc(implode(';', $c->tags ?? [])),
+                $esc($c->created_at?->toDateTimeString() ?? ''),
+            ]) . "\n";
         }
 
         return response($csv, 200, [
@@ -212,20 +233,11 @@ class ContactController extends Controller
      */
     public function template(): \Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $rows = [
-            ['name', 'phone', 'email', 'tags'],
-            ['张三', '13800138000', 'zhangsan@example.com', 'VIP;客户'],
-            ['李四', '13900139000', '', '潜在客户'],
-        ];
+        $csv = "\xEF\xBB\xBFName,Phone,Email,Tags\n";
+        $csv .= '"张三",13800138000,zhangsan@example.com,"VIP;客户"\n';
+        $csv .= '"李四",13900139000,,"潜在客户"\n';
 
-        $csv = '';
-        foreach ($rows as $row) {
-            $csv .= "\xEF\xBB\xBF" . implode(',', array_map(fn($v) => '"' . str_replace('"', '""', $v) . '"', $row)) . "\n";
-        }
-
-        return response()->streamDownload(function () use ($csv) {
-            echo $csv;
-        }, 'contacts-template.csv', [
+        return response()->streamDownload(fn() => print($csv), 'contacts-template.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }

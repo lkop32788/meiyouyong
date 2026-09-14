@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import { getSocket } from '../../lib/socket';
@@ -50,6 +50,11 @@ export default function BroadcastPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading]     = useState(true);
   const [selected, setSelected]   = useState<Campaign | null>(null);
+  const selectedIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    selectedIdRef.current = selected?.id ?? null;
+  }, [selected]);
   const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
@@ -65,7 +70,7 @@ export default function BroadcastPage() {
             : c
         )
       );
-      if (selected?.id === data.campaign_id) {
+      if (selectedIdRef.current === data.campaign_id) {
         setSelected((prev) => prev ? { ...prev, sent_count: data.sent, delivered_count: data.delivered, failed_count: data.failed } : prev);
       }
     };
@@ -279,6 +284,8 @@ function CreateCampaignWizard({ onDone, onCancel }: { onDone: (c: Campaign) => v
       const { data } = await api.post('/campaigns', payload);
       onDone(data);
       toast.success('群发活动创建成功');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? '创建群发活动失败');
     } finally {
       setSaving(false);
     }

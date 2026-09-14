@@ -110,6 +110,12 @@ class VoiceAgentController extends Controller
             'phone' => 'required|string|max:30',
         ]);
 
+        // Sanitize and validate phone
+        $phone = preg_replace('/[^0-9]/', '', $data['phone']);
+        if (strlen($phone) < 7) {
+            return response()->json(['message' => '请输入有效的手机号'], 422);
+        }
+
         $agent = VoiceAgent::findOrFail($id);
 
         $channel = $agent->channel_id
@@ -120,7 +126,14 @@ class VoiceAgentController extends Controller
             return response()->json(['message' => '没有可用的 WhatsApp 渠道，请先接入渠道'], 422);
         }
 
-        $settings = json_decode(Crypt::decryptString($channel->credentials_encrypted), true) ?? [];
+        // Decrypt credentials with error handling
+        try {
+            $settings = json_decode(Crypt::decryptString($channel->credentials_encrypted), true) ?? [];
+        } catch (Throwable $e) {
+            Log::error('Channel credential decryption failed', ['channel_id' => $channel->id]);
+            return response()->json(['message' => '渠道配置解密失败'], 500);
+        }
+
         $token   = $settings['access_token'] ?? null;
         $phoneId = $settings['phone_number_id'] ?? null;
 
@@ -135,7 +148,7 @@ class VoiceAgentController extends Controller
                     'company_id'      => $request->user()->company_id,
                     'channel_id'      => $channel->id,
                     'agent_id'        => $agent->id,
-                    'to'              => preg_replace('/[^0-9]/', '', $data['phone']),
+                    'to'              => $phone,
                     'access_token'    => $token,
                     'phone_number_id' => $phoneId,
                 ]);
@@ -157,7 +170,7 @@ class VoiceAgentController extends Controller
             'channel_id'     => $channel->id,
             'voice_agent_id' => $agent->id,
             'call_id'        => $payload['call_id'] ?? ('out-' . uniqid()),
-            'to_number'      => $payload['to'] ?? $data['phone'],
+            'to_number'      => $payload['to'] ?? $phone,
             'direction'      => 'business_initiated',
             'status'         => 'initiating',
             'started_at'     => now(),

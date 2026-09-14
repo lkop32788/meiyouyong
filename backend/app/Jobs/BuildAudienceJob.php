@@ -11,6 +11,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class BuildAudienceJob implements ShouldQueue
 {
@@ -40,18 +41,20 @@ class BuildAudienceJob implements ShouldQueue
             'total_count' => $recipients->count(),
         ]);
 
-        // Batch insert recipients (500 per batch)
-        foreach ($recipients->chunk(500) as $chunk) {
-            AudienceSnapshotRecipient::insert(
-                $chunk->map(fn ($r) => [
-                    'snapshot_id'      => $snapshot->id,
-                    'contact_id'       => $r['contact_id'],
-                    'channel_identity' => $r['channel_identity'],
-                    'variables'        => json_encode($r['variables'] ?? []),
-                    'status'           => 'pending',
-                ])->all()
-            );
-        }
+        // Batch insert recipients with transaction
+        DB::transaction(function () use ($recipients, $snapshot) {
+            foreach ($recipients->chunk(500) as $chunk) {
+                AudienceSnapshotRecipient::insert(
+                    $chunk->map(fn ($r) => [
+                        'snapshot_id'      => $snapshot->id,
+                        'contact_id'       => $r['contact_id'],
+                        'channel_identity' => $r['channel_identity'],
+                        'variables'        => json_encode($r['variables'] ?? []),
+                        'status'           => 'pending',
+                    ])->all()
+                );
+            }
+        });
 
         $campaign->update([
             'audience_snapshot_id' => $snapshot->id,
@@ -70,7 +73,9 @@ class BuildAudienceJob implements ShouldQueue
         $ratePerMin = $campaign->rate_limit_per_minute;
 
         foreach ($chunks as $index => $chunk) {
-            $delay = $index === 0 ? 0 : (int) round(60 / $ratePerMin * $chunkSize * $index);
+            $delay = $index === 0
+                ? 0
+                : min((int) round(60 / $ratePerMin * $chunkSize * $index), PHP_INT_MAX);
 
             ProcessBroadcastChunkJob::dispatch(
                 $campaign->id,
@@ -83,14 +88,22 @@ class BuildAudienceJob implements ShouldQueue
 
     private function resolveAudience(BroadcastCampaign $campaign): \Illuminate\Support\Collection
     {
-        $channelType = DB::table('channels')
+        $channel = DB::table('channels')
             ->where('id', $campaign->channel_id)
-            ->value('channel_type');
+            ->first();
+
+        if (! $channel || ! $channel->channel_type) {
+            Log::warning('BuildAudienceJob: channel not found', [
+                'campaign_id' => $campaign->id,
+                'channel_id'  => $campaign->channel_id,
+            ]);
+            return collect();
+        }
 
         $base = DB::table('contacts as c')
-            ->join('contact_channel_identities as ci', function ($join) use ($channelType) {
+            ->join('contact_channel_identities as ci', function ($join) use ($channel) {
                 $join->on('ci.contact_id', '=', 'c.id')
-                     ->where('ci.channel_type', '=', $channelType);
+                     ->where('ci.channel_type', '=', $channel->channel_type);
             })
             ->where('c.company_id', $campaign->company_id)
             ->whereNull('c.deleted_at')
@@ -104,18 +117,9 @@ class BuildAudienceJob implements ShouldQueue
             $tags     = $campaign->audience_config['tags'] ?? [];
             $tagCount = count($tags);
 
-            $rows = $base->whereRaw(
-                "(SELECT COUNT(DISTINCT value) FROM OPENJSON(c.tags) WHERE value IN (" .
-                implode(',', array_fill(0, $tagCount, '?')) . ")) = ?",
-                [...$tags, $tagCount]
-            )->get();
-
-            return collect($rows)->map(fn ($r) => (array) $r);
-        }
-
-        if ($campaign->audience_type === 'tag') {
-            $tags     = $campaign->audience_config['tags'] ?? [];
-            $tagCount = count($tags);
+            if ($tagCount === 0) {
+                return collect();
+            }
 
             $rows = $base->whereRaw(
                 "(SELECT COUNT(DISTINCT value) FROM OPENJSON(c.tags) WHERE value IN (" .
@@ -128,11 +132,24 @@ class BuildAudienceJob implements ShouldQueue
 
         if ($campaign->audience_type === 'upload') {
             $contactIds = $campaign->audience_config['contact_ids'] ?? [];
+
             if (empty($contactIds)) {
                 return collect();
             }
 
-            $rows = $base->whereIn('c.id', $contactIds)->get();
+            // Validate UUID format
+            $validIds = array_filter($contactIds, fn($id) =>
+                is_string($id) && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $id)
+            );
+
+            if (empty($validIds)) {
+                Log::warning('BuildAudienceJob: no valid contact UUIDs', [
+                    'campaign_id' => $campaign->id,
+                ]);
+                return collect();
+            }
+
+            $rows = $base->whereIn('c.id', $validIds)->get();
             return collect($rows)->map(fn ($r) => (array) $r);
         }
 
