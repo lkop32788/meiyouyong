@@ -29,7 +29,7 @@ export default function InboxPage() {
     <div className="flex flex-col h-screen bg-gray-100">
       {/* Top bar */}
       <header className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between shrink-0">
-        <span className="font-bold text-brand-600">OmniClick</span>
+        <span className="font-bold text-brand-600">红浪漫会所</span>
         <div className="flex items-center gap-3">
           <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-400'}`} title={isConnected ? '已连接' : '已断开'} />
           <span className="text-sm text-gray-600">{user?.name}</span>

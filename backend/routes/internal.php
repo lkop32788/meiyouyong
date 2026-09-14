@@ -4,6 +4,7 @@ use App\Http\Controllers\Internal\AgentController;
 use App\Http\Controllers\Internal\AgentSkillsController;
 use App\Http\Controllers\Internal\CacheController;
 use App\Http\Controllers\Internal\ConversationStateController;
+use App\Http\Controllers\Internal\VoiceInternalController;
 use Illuminate\Support\Facades\Route;
 
 // Internal service-to-service routes — protected by X-Internal-Key header
@@ -29,4 +30,9 @@ Route::middleware('internal.key')->prefix('internal')->group(function () {
     // Conversation state (Redis HASH untuk Realtime Server event routing)
     Route::get('/conversations/{id}/state', [ConversationStateController::class, 'show'])
         ->where('id', '[0-9a-f-]{36}');
+
+    // AI voice calling (dipanggil gateway saat WhatsApp call webhook)
+    Route::get('/voice/resolve-agent',  [VoiceInternalController::class, 'resolveAgent']);
+    Route::post('/voice/sessions',      [VoiceInternalController::class, 'createSession']);
+    Route::post('/voice/session-status', [VoiceInternalController::class, 'sessionStatus']);
 });

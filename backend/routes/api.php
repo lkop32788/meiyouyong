@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\BotFlowController;
 use App\Http\Controllers\Api\CampaignController;
 use App\Http\Controllers\Api\ChannelConnectionController;
 use App\Http\Controllers\Api\ChannelController;
+use App\Http\Controllers\Api\VoiceAgentController;
 use App\Http\Controllers\Api\AiConfigController;
 use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\ConversationController;
@@ -53,9 +54,16 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
 
     // Contacts
     Route::prefix('contacts')->group(function () {
-        Route::get('/{id}',   [ContactController::class, 'show'])
+        Route::get('/',            [ContactController::class, 'index']);
+        Route::post('/',           [ContactController::class, 'store']);
+        Route::post('/import',     [ContactController::class, 'import']);
+        Route::get('/export',      [ContactController::class, 'export']);
+        Route::get('/template',    [ContactController::class, 'template']);
+        Route::get('/{id}',       [ContactController::class, 'show'])
             ->where('id', '[0-9a-f-]{36}');
-        Route::patch('/{id}', [ContactController::class, 'update'])
+        Route::patch('/{id}',     [ContactController::class, 'update'])
+            ->where('id', '[0-9a-f-]{36}');
+        Route::delete('/{id}',    [ContactController::class, 'destroy'])
             ->where('id', '[0-9a-f-]{36}');
     });
 
@@ -129,6 +137,27 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::delete('/{id}',     [MetaAppConfigController::class, 'destroy']);
         Route::post('/{id}/verify',[MetaAppConfigController::class, 'verify']);
     });
+
+
+    // AI voice agents (WhatsApp calling)
+    Route::get('/voice/agents',           [VoiceAgentController::class, 'index']);
+    Route::post('/voice/agents',          [VoiceAgentController::class, 'store']);
+    Route::get('/voice/agents/{id}',      [VoiceAgentController::class, 'show'])
+        ->where('id', '[0-9a-f-]{36}');
+    Route::put('/voice/agents/{id}',      [VoiceAgentController::class, 'update'])
+        ->where('id', '[0-9a-f-]{36}');
+    Route::delete('/voice/agents/{id}',   [VoiceAgentController::class, 'destroy'])
+        ->where('id', '[0-9a-f-]{36}');
+    Route::post('/voice/agents/{id}/call',    [VoiceAgentController::class, 'call'])
+        ->where('id', '[0-9a-f-]{36}');
+    Route::post('/voice/agents/{id}/default', [VoiceAgentController::class, 'makeDefault'])
+        ->where('id', '[0-9a-f-]{36}');
+    Route::get('/voice/channels',         [VoiceAgentController::class, 'channels']);
+
+    // Call sessions
+    Route::get('/voice/calls',            [VoiceAgentController::class, 'calls']);
+    Route::get('/voice/calls/{id}',       [VoiceAgentController::class, 'showCall'])
+        ->where('id', '[0-9a-f-]{36}');
 
     // AI: config + flow generation
     Route::get('/ai-config',        [AiConfigController::class, 'show']);

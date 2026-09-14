@@ -13,6 +13,11 @@ import CompanySettingsPage from './pages/settings/CompanySettingsPage';
 import AgentsSettingsPage from './pages/settings/AgentsSettingsPage';
 import MetaAppsPage from './pages/settings/MetaAppsPage';
 import AiConfigPage from './pages/settings/AiConfigPage';
+import VoiceAgentsPage from './pages/settings/VoiceAgentsPage';
+import SystemDashboardPage from './pages/system/SystemDashboardPage';
+import SystemCompaniesPage from './pages/system/SystemCompaniesPage';
+import SystemUsersPage from './pages/system/SystemUsersPage';
+import ContactsPage from './pages/contacts/ContactsPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -31,6 +36,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/inbox', icon: '💬', label: '收件箱' },
   { to: '/bot-flows', icon: '🤖', label: '机器人' },
   { to: '/broadcast', icon: '📢', label: '群发' },
+  { to: '/voice-agents', icon: '☎️', label: '智能外呼' },
   { to: '/analytics', icon: '📊', label: '分析' },
   { icon: '⚙️', label: '设置', children: [
     { to: '/channels', icon: '📱', label: '渠道' },
@@ -45,6 +51,40 @@ function AppShell() {
   const { user, logout } = useAuthStore();
   const [expanded, setExpanded] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const isSuperAdmin = user?.role === 'super_admin';
+
+  const navItems: NavItem[] = isSuperAdmin
+    ? [
+        { to: '/inbox', icon: '💬', label: '收件箱' },
+        { to: '/bot-flows', icon: '🤖', label: '机器人' },
+        { to: '/broadcast', icon: '📢', label: '群发' },
+        { to: '/voice-agents', icon: '☎️', label: '智能外呼' },
+        { to: '/contacts', icon: '👥', label: '联系人' },
+        { to: '/analytics', icon: '📊', label: '分析' },
+        { to: '/system', icon: '🔧', label: '系统管理' },
+        { icon: '⚙️', label: '设置', children: [
+          { to: '/channels', icon: '📱', label: '渠道' },
+          { to: '/settings/meta-apps', icon: '🔑', label: 'Meta 应用' },
+          { to: '/settings/ai', icon: '✨', label: 'AI 配置' },
+          { to: '/settings/company', icon: '🏢', label: '公司' },
+          { to: '/settings/agents', icon: '👥', label: '客服' },
+        ]},
+      ]
+    : [
+        { to: '/inbox', icon: '💬', label: '收件箱' },
+        { to: '/bot-flows', icon: '🤖', label: '机器人' },
+        { to: '/broadcast', icon: '📢', label: '群发' },
+        { to: '/voice-agents', icon: '☎️', label: '智能外呼' },
+        { to: '/analytics', icon: '📊', label: '分析' },
+        { icon: '⚙️', label: '设置', children: [
+          { to: '/channels', icon: '📱', label: '渠道' },
+          { to: '/settings/meta-apps', icon: '🔑', label: 'Meta 应用' },
+          { to: '/settings/ai', icon: '✨', label: 'AI 配置' },
+          { to: '/settings/company', icon: '🏢', label: '公司' },
+          { to: '/settings/agents', icon: '👥', label: '客服' },
+        ]},
+      ];
 
   const renderNavItem = (item: NavItem, isChild = false) => {
     if (item.to) {
@@ -91,12 +131,12 @@ function AppShell() {
         onMouseLeave={() => { setExpanded(false); setSettingsOpen(false); }}
       >
         <div className={`px-3 mb-3 font-black text-white text-xl transition-opacity ${expanded ? 'opacity-100' : 'opacity-0'}`}>
-          OmniClick
+          红浪漫会所
         </div>
         {!expanded && <div className="w-10 h-10 mx-auto mb-3 bg-brand-600 rounded-lg flex items-center justify-center text-white font-bold">O</div>}
 
         <div className="flex-1 flex flex-col gap-1 px-2 overflow-y-auto">
-          {NAV_ITEMS.map((item) => (
+          {navItems.map((item) => (
             <div key={item.label}>
               {item.children ? (
                 <>
@@ -179,8 +219,13 @@ export default function App() {
           <Route path="/channels"          element={<ChannelsPage />} />
           <Route path="/settings/meta-apps" element={<MetaAppsPage />} />
           <Route path="/settings/ai"       element={<AiConfigPage />} />
+          <Route path="/voice-agents"     element={<VoiceAgentsPage />} />
+          <Route path="/contacts"         element={<ContactsPage />} />
           <Route path="/settings/company"  element={<CompanySettingsPage />} />
           <Route path="/settings/agents"   element={<AgentsSettingsPage />} />
+          <Route path="/system"           element={<SystemDashboardPage />} />
+          <Route path="/system/companies" element={<SystemCompaniesPage />} />
+          <Route path="/system/users"     element={<SystemUsersPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/inbox" replace />} />

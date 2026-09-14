@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureIsSuperAdmin;
 use App\Http\Middleware\InternalApiKeyMiddleware;
 use App\Http\Middleware\TenantMiddleware;
 use Illuminate\Foundation\Application;
@@ -16,12 +17,16 @@ return Application::configure(basePath: dirname(__DIR__))
         then: function () {
             \Illuminate\Support\Facades\Route::middleware('web')
                 ->group(base_path('routes/internal.php'));
+            \Illuminate\Support\Facades\Route::prefix('system')
+                ->middleware(['auth:sanctum', 'system.admin'])
+                ->group(base_path('routes/system.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'tenant'       => TenantMiddleware::class,
             'internal.key' => InternalApiKeyMiddleware::class,
+            'system.admin' => EnsureIsSuperAdmin::class,
         ]);
 
         // All /api/* routes return JSON

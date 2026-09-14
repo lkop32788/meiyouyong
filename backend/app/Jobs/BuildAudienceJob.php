@@ -113,7 +113,30 @@ class BuildAudienceJob implements ShouldQueue
             return collect($rows)->map(fn ($r) => (array) $r);
         }
 
-        // segment and upload handled by separate pre-processing steps
+        if ($campaign->audience_type === 'tag') {
+            $tags     = $campaign->audience_config['tags'] ?? [];
+            $tagCount = count($tags);
+
+            $rows = $base->whereRaw(
+                "(SELECT COUNT(DISTINCT value) FROM OPENJSON(c.tags) WHERE value IN (" .
+                implode(',', array_fill(0, $tagCount, '?')) . ")) = ?",
+                [...$tags, $tagCount]
+            )->get();
+
+            return collect($rows)->map(fn ($r) => (array) $r);
+        }
+
+        if ($campaign->audience_type === 'upload') {
+            $contactIds = $campaign->audience_config['contact_ids'] ?? [];
+            if (empty($contactIds)) {
+                return collect();
+            }
+
+            $rows = $base->whereIn('c.id', $contactIds)->get();
+            return collect($rows)->map(fn ($r) => (array) $r);
+        }
+
+        // segment handled by separate pre-processing steps
         return collect();
     }
 }

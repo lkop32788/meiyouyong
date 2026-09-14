@@ -21,6 +21,7 @@ const { createAmqpConnection, setupBrokerTopology } = require('./lib/amqpClient'
 const { healthCheck } = require('./handlers/health');
 
 const whatsappRouter = require('./routes/whatsapp');
+const whatsappCallsRouter = require('./routes/whatsappCalls');
 const lineRouter = require('./routes/line');
 const emailRouter = require('./routes/email');
 const telegramRouter = require('./routes/telegram');
@@ -90,6 +91,9 @@ async function bootstrap() {
     app.get('/health', healthCheck);
 
     app.use('/webhook/whatsapp', whatsappRouter);
+    // Call events use the same webhook path; this router only handles entries
+    // with value.calls[] (AI voice bridge routing)
+    app.use('/webhook/whatsapp', whatsappCallsRouter);
     app.use('/webhook/line',     lineRouter);
     app.use('/webhook/email',    emailRouter);
     app.use('/webhook/telegram', telegramRouter);

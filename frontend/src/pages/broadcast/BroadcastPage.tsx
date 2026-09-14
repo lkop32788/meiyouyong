@@ -1,7 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import { getSocket } from '../../lib/socket';
+
+interface Contact {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  tags: string[];
+}
 
 type CampaignStatus = 'draft' | 'scheduled' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
 
@@ -223,30 +231,72 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
 }
 
 function CreateCampaignWizard({ onDone, onCancel }: { onDone: (c: Campaign) => void; onCancel: () => void }) {
-  const [step, setStep]     = useState(1);
-  const [form, setForm]     = useState({
+  const [step, setStep]       = useState(1);
+  const [form, setForm]       = useState({
     name: '',
     channel_id: '',
     audience_type: 'all' as 'all' | 'tag' | 'segment' | 'upload',
-    audience_config: {},
+    audience_config: {} as Record<string, unknown>,
     scheduled_at: '',
     rate_limit_per_minute: 60,
   });
-  const [channels, setChannels] = useState<Array<{ id: string; name: string; channel_type: string }>>([]);
-  const [saving, setSaving]   = useState(false);
+  const [channels, setChannels]   = useState<Array<{ id: string; name: string; channel_type: string }>>([]);
+  const [contacts, setContacts]   = useState<Contact[]>([]);
+  const [totalContacts, setTotal] = useState(0);
+  const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
+  const [loadingContacts, setLoadingContacts] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Load imported contacts when audience_type changes to 'upload'
+  const loadContacts = useCallback((q = '') => {
+    setLoadingContacts(true);
+    api.get('/contacts', { params: { page: 1, search: q, limit: 100 } })
+      .then((r) => {
+        setContacts(r.data.data ?? []);
+        setTotal(r.data.total ?? 0);
+      })
+      .catch(() => toast.error('加载联系人失败'))
+      .finally(() => setLoadingContacts(false));
+  }, []);
 
   useEffect(() => {
     api.get('/channels').then((r) => setChannels(r.data?.data ?? r.data ?? [])).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (form.audience_type === 'upload' && contacts.length === 0) {
+      loadContacts();
+    }
+  }, [form.audience_type, contacts.length, loadContacts]);
+
   const submit = async () => {
     setSaving(true);
     try {
-      const { data } = await api.post('/campaigns', form);
+      const payload = { ...form };
+      if (form.audience_type === 'upload') {
+        payload.audience_config = { contact_ids: Array.from(selectedContacts) };
+      }
+      const { data } = await api.post('/campaigns', payload);
       onDone(data);
       toast.success('群发活动创建成功');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const toggleContact = (id: string) => {
+    setSelectedContacts((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (selectedContacts.size === contacts.length) {
+      setSelectedContacts(new Set());
+    } else {
+      setSelectedContacts(new Set(contacts.map((c) => c.id)));
     }
   };
 
@@ -315,17 +365,76 @@ function CreateCampaignWizard({ onDone, onCancel }: { onDone: (c: Campaign) => v
                 />
                 <div>
                   <p className="text-sm font-medium text-gray-700 capitalize">
-                    {type === 'all' ? '全部联系人' : type === 'tag' ? '按标签筛选' : type === 'segment' ? '动态分组' : '上传 CSV'}
+                    {type === 'all' ? '全部联系人' : type === 'tag' ? '按标签筛选' : type === 'segment' ? '动态分组' : '已导入联系人'}
                   </p>
                   <p className="text-xs text-gray-400">
                     {type === 'all' ? '发送给所有启用中的联系人'
                       : type === 'tag' ? '按联系人标签进行筛选'
                       : type === 'segment' ? '基于联系人字段的自定义条件'
-                      : '上传包含接收人列表的 CSV 文件'}
+                      : `从联系人列表中选择（${totalContacts} 位联系人）`}
                   </p>
                 </div>
               </label>
             ))}
+
+            {/* Contact selection when 'upload' is selected */}
+            {form.audience_type === 'upload' && (
+              <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
+                <div className="bg-gray-50 px-4 py-2 flex items-center justify-between border-b border-gray-200">
+                  <span className="text-sm text-gray-600">
+                    已选择 {selectedContacts.size} / {contacts.length} 位联系人
+                    {totalContacts > contacts.length && `（共 ${totalContacts} 位）`}
+                  </span>
+                  <button
+                    onClick={selectAll}
+                    className="text-xs text-brand-600 hover:underline"
+                  >
+                    {selectedContacts.size === contacts.length ? '取消全选' : '全选'}
+                  </button>
+                </div>
+                {loadingContacts ? (
+                  <p className="text-center py-8 text-gray-400 text-sm">加载中...</p>
+                ) : contacts.length === 0 ? (
+                  <div className="text-center py-8 text-gray-400">
+                    <p className="text-sm mb-2">暂无已导入的联系人</p>
+                    <a href="/contacts" target="_blank" className="text-brand-600 hover:underline text-sm">
+                      去导入联系人 →
+                    </a>
+                  </div>
+                ) : (
+                  <div className="max-h-64 overflow-y-auto divide-y divide-gray-100">
+                    {contacts.map((c) => (
+                      <label key={c.id} className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedContacts.has(c.id)}
+                          onChange={() => toggleContact(c.id)}
+                          className="accent-brand-600 rounded"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{c.name}</p>
+                          <p className="text-xs text-gray-400 truncate">{c.phone ?? c.email ?? '—'}</p>
+                        </div>
+                        {c.tags.length > 0 && (
+                          <div className="flex gap-1 flex-wrap">
+                            {c.tags.slice(0, 2).map((t) => (
+                              <span key={t} className="text-xs bg-blue-50 text-blue-600 rounded px-1.5 py-0.5">{t}</span>
+                            ))}
+                          </div>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                )}
+                {contacts.length < totalContacts && (
+                  <div className="px-4 py-2 border-t border-gray-200 text-center">
+                    <a href="/contacts" target="_blank" className="text-xs text-gray-500 hover:text-brand-600">
+                      查看全部 {totalContacts} 位联系人 →
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -374,7 +483,14 @@ function CreateCampaignWizard({ onDone, onCancel }: { onDone: (c: Campaign) => v
             <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-gray-500">名称</span><span className="font-medium">{form.name}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">渠道</span><span>{channels.find((c) => c.id === form.channel_id)?.name ?? '—'}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">人群</span><span className="capitalize">{form.audience_type}</span></div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">人群</span>
+                <span>
+                  {form.audience_type === 'upload'
+                    ? `已选联系人 (${selectedContacts.size}人)`
+                    : form.audience_type.charAt(0).toUpperCase() + form.audience_type.slice(1)}
+                </span>
+              </div>
               <div className="flex justify-between"><span className="text-gray-500">时间</span><span>{form.scheduled_at || '立即'}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">频率限制</span><span>{form.rate_limit_per_minute} 条/分钟</span></div>
             </div>

@@ -20,7 +20,7 @@ export default function LoginPage() {
       await login(companySlug, email, password);
       navigate('/inbox');
     } catch {
-      setError('邮箱、密码或企业标识不正确。');
+      setError('邮箱、密码或手牌号码不正确。');
     } finally {
       setLoading(false);
     }
@@ -29,7 +29,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="bg-white shadow rounded-lg p-8 w-full max-w-sm">
-        <h1 className="text-2xl font-bold text-gray-900 mb-6">OmniClick</h1>
+        <h1 className="text-2xl font-bold text-gray-900 mb-6">红浪漫会所</h1>
 
         {error && (
           <div className="mb-4 rounded bg-red-50 border border-red-200 text-red-700 px-3 py-2 text-sm">
@@ -39,14 +39,14 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">企业标识</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">手牌号码</label>
             <input
               type="text"
               value={companySlug}
               onChange={(e) => setCompanySlug(e.target.value)}
               required
               className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-              placeholder="my-company"
+              placeholder="请输入"
             />
           </div>
           <div>
