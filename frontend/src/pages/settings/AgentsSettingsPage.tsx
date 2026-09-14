@@ -13,6 +13,21 @@ interface AgentRow {
   status?: string;
 }
 
+interface ChannelRow {
+  id: string;
+  name: string;
+  type: string;
+  is_active: boolean;
+}
+
+interface AgentChannelRow {
+  id: string;
+  agent_id: string;
+  channel_id: string;
+  channel_name: string;
+  channel_type: string;
+}
+
 const ROLE_LABEL: Record<string, string> = {
   super_admin: '超级管理员',
   admin: '管理员',
@@ -39,6 +54,15 @@ export default function AgentsSettingsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
+
+  // Channel assignment modal state
+  const [channelModalOpen, setChannelModalOpen] = useState(false);
+  const [channelAgentId, setChannelAgentId] = useState<string | null>(null);
+  const [channelAgentName, setChannelAgentName] = useState('');
+  const [allChannels, setAllChannels] = useState<ChannelRow[]>([]);
+  const [assignedChannels, setAssignedChannels] = useState<AgentChannelRow[]>([]);
+  const [channelLoading, setChannelLoading] = useState(false);
+  const [channelSaving, setChannelSaving] = useState(false);
 
   const isAdmin = me?.role === 'super_admin' || me?.role === 'admin';
   const isSupervisor = me?.role === 'supervisor';
@@ -121,6 +145,65 @@ export default function AgentsSettingsPage() {
     }
   };
 
+  // ── Channel assignment ───────────────────────────────────────────────────────
+
+  const openChannelModal = async (agent: AgentRow) => {
+    setChannelAgentId(agent.id);
+    setChannelAgentName(agent.name);
+    setChannelModalOpen(true);
+    setChannelLoading(true);
+
+    try {
+      const [channelsRes, assignedRes] = await Promise.all([
+        api.get('/channels'),
+        api.get('/agent-channels', { params: { agent_id: agent.id } }),
+      ]);
+
+      const activeChannels = (channelsRes.data?.data ?? []).filter(
+        (c: ChannelRow) => c.is_active
+      );
+      setAllChannels(activeChannels);
+      setAssignedChannels(assignedRes.data ?? []);
+    } catch {
+      toast.error('加载渠道列表失败');
+    } finally {
+      setChannelLoading(false);
+    }
+  };
+
+  const removeAssignedChannel = async (assignmentId: string) => {
+    try {
+      await api.delete(`/agent-channels/${assignmentId}`);
+      setAssignedChannels((prev) => prev.filter((a) => a.id !== assignmentId));
+    } catch {
+      toast.error('移除失败');
+    }
+  };
+
+  const addChannel = async (channelId: string) => {
+    if (!channelAgentId) return;
+    try {
+      const res = await api.post('/agent-channels', {
+        agent_id: channelAgentId,
+        channel_id: channelId,
+      });
+      const newRow: AgentChannelRow = {
+        id: res.data.id,
+        agent_id: channelAgentId,
+        channel_id: channelId,
+        channel_name: allChannels.find((c) => c.id === channelId)?.name ?? '',
+        channel_type: allChannels.find((c) => c.id === channelId)?.type ?? '',
+      };
+      setAssignedChannels((prev) => [...prev, newRow]);
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(msg ?? '添加失败');
+    }
+  };
+
+  const assignedChannelIds = new Set(assignedChannels.map((a) => a.channel_id));
+  const availableChannels = allChannels.filter((c) => !assignedChannelIds.has(c.id));
+
   const canEditRow = (a: AgentRow) =>
     canManage && a.id !== me?.id && !['super_admin'].includes(a.role);
 
@@ -188,6 +271,7 @@ export default function AgentsSettingsPage() {
                       {canEditRow(a) ? (
                         <>
                           <button onClick={() => openEdit(a)} className="text-xs text-brand-600 hover:underline mr-3">编辑</button>
+                          <button onClick={() => openChannelModal(a)} className="text-xs text-gray-500 hover:text-gray-700 mr-3 border border-gray-300 rounded px-1.5 py-0.5">分配渠道</button>
                           <button onClick={() => deactivate(a)} className="text-xs text-red-500 hover:underline">停用</button>
                         </>
                       ) : (
@@ -202,6 +286,7 @@ export default function AgentsSettingsPage() {
         </div>
       )}
 
+      {/* Create/Edit modal */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setModalOpen(false)}>
           <div className="bg-white rounded-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
@@ -262,6 +347,77 @@ export default function AgentsSettingsPage() {
                 className="px-4 py-2 text-sm rounded-lg bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
               >
                 {saving ? '保存中...' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Channel assignment modal */}
+      {channelModalOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setChannelModalOpen(false)}>
+          <div className="bg-white rounded-xl w-full max-w-lg p-6 max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-gray-900 mb-1">分配渠道</h2>
+            <p className="text-sm text-gray-500 mb-4">为「{channelAgentName}」分配可处理的渠道号码。客服只能看到分配渠道的会话。</p>
+
+            {channelLoading ? (
+              <p className="text-gray-400 text-sm">加载中...</p>
+            ) : (
+              <>
+                {/* Assigned channels */}
+                <div className="mb-4">
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">已分配渠道</h3>
+                  {assignedChannels.length === 0 ? (
+                    <p className="text-xs text-gray-400">暂未分配任何渠道。该客服将无法看到任何会话。</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {assignedChannels.map((ac) => (
+                        <span key={ac.id} className="inline-flex items-center gap-1 bg-green-100 text-green-800 text-xs rounded-full px-3 py-1">
+                          <span className="font-medium">{ac.channel_name || ac.channel_type}</span>
+                          <button
+                            onClick={() => removeAssignedChannel(ac.id)}
+                            className="ml-1 hover:text-red-600 font-bold"
+                            title="移除"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Add channel */}
+                {availableChannels.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">添加渠道</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {availableChannels.map((c) => (
+                        <button
+                          key={c.id}
+                          onClick={() => addChannel(c.id)}
+                          className="inline-flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded-full px-3 py-1 transition"
+                        >
+                          <span className="font-medium">{c.name || c.type}</span>
+                          <span className="text-gray-400">+</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {allChannels.length === 0 && (
+                  <p className="text-xs text-gray-400">当前公司没有已激活的渠道。</p>
+                )}
+              </>
+            )}
+
+            <div className="mt-6 pt-4 border-t border-gray-200 flex justify-end">
+              <button
+                onClick={() => setChannelModalOpen(false)}
+                className="px-4 py-2 text-sm rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200"
+              >
+                关闭
               </button>
             </div>
           </div>

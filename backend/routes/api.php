@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AgentChannelController;
 use App\Http\Controllers\Api\AgentController;
 use App\Http\Controllers\Api\AnalyticsController;
 use App\Http\Controllers\Api\BotFlowController;
@@ -72,6 +73,11 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::post('agents',   [AgentController::class, 'store']);
     Route::put('agents/{id}',    [AgentController::class, 'update'])->where('id', '[0-9a-f-]{36}');
     Route::delete('agents/{id}', [AgentController::class, 'destroy'])->where('id', '[0-9a-f-]{36}');
+
+    // Agent-channel assignments (supervisor+ only)
+    Route::get('agent-channels',        [AgentChannelController::class, 'index']);
+    Route::post('agent-channels',       [AgentChannelController::class, 'store']);
+    Route::delete('agent-channels/{id}', [AgentChannelController::class, 'destroy'])->where('id', '[0-9a-f-]{36}');
 
     // Channels (CRUD)
     Route::prefix('channels')->group(function () {
