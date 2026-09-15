@@ -3,7 +3,9 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -12,7 +14,7 @@ use Illuminate\Support\Facades\Crypt;
 
 class Channel extends Model
 {
-    use BelongsToTenant, HasUuids, SoftDeletes;
+    use BelongsToTenant, HasFactory, HasUuids, SoftDeletes;
 
     protected $fillable = [
         'company_id',
@@ -36,6 +38,15 @@ class Channel extends Model
     ];
 
     protected $hidden = ['credentials_encrypted'];
+
+    /**
+     * WhatsApp display phone number. Stored inside the settings JSON, not as a
+     * column — this accessor exists so callers can read it uniformly.
+     */
+    protected function displayPhoneNumber(): Attribute
+    {
+        return Attribute::get(fn (): ?string => $this->settings['display_phone_number'] ?? null);
+    }
 
     public function company(): BelongsTo
     {

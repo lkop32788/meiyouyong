@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -12,7 +13,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Conversation extends Model
 {
-    use BelongsToTenant, HasUuids, SoftDeletes;
+    use BelongsToTenant, HasFactory, HasUuids, SoftDeletes;
 
     protected $fillable = [
         'company_id',
@@ -84,5 +85,28 @@ class Conversation extends Model
     public function scopeActive(Builder $query): Builder
     {
         return $query->whereIn('status', ['pending', 'open']);
+    }
+
+    /**
+     * Restrict to the channels an agent has been assigned.
+     *
+     * Agents only handle the numbers a supervisor gave them; supervisors and
+     * admins are never channel-filtered and see the whole company inbox.
+     * Fail-closed: an agent with no assignments sees nothing.
+     *
+     * Apply this to EVERY conversation lookup, not just listings — otherwise a
+     * conversation from an unassigned channel is reachable by its UUID.
+     */
+    public function scopeVisibleToAgent(Builder $query, User $user): Builder
+    {
+        if ($user->role !== 'agent') {
+            return $query;
+        }
+
+        $allowedChannelIds = AgentChannel::where('agent_id', $user->id)->pluck('channel_id');
+
+        return $allowedChannelIds->isEmpty()
+            ? $query->whereRaw('1 = 0')
+            : $query->whereIn('channel_id', $allowedChannelIds);
     }
 }

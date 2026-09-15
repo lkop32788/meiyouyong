@@ -103,6 +103,7 @@ class MessageController extends Controller
     {
         return Conversation::with('contact')
             ->where('company_id', $request->user()->company_id)
+            ->visibleToAgent($request->user())
             ->findOrFail($id);
     }
 

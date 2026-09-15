@@ -31,22 +31,11 @@ class ConversationController extends Controller
         $limit  = min((int) $request->input('limit', 30), 100);
         $cursor = $request->input('cursor');
 
+        // Agents only see conversations from channels assigned to them.
         $query = Conversation::with(['contact', 'channel', 'assignedAgent'])
             ->where('company_id', $user->company_id)
+            ->visibleToAgent($user)
             ->whereIn('status', ['pending', 'open', 'snoozed']);
-
-        // Agents can only see conversations from channels assigned to them
-        if ($user->role === 'agent') {
-            $allowedChannelIds = DB::table('agent_channels')
-                ->where('agent_id', $user->id)
-                ->pluck('channel_id');
-
-            if ($allowedChannelIds->isEmpty()) {
-                $query->where('id', '=', '00000000-0000-0000-0000-000000000000'); // return none
-            } else {
-                $query->whereIn('channel_id', $allowedChannelIds);
-            }
-        }
 
         match ($filter) {
             'mine'       => $query->where('assigned_agent_id', $user->id),
@@ -86,6 +75,7 @@ class ConversationController extends Controller
     {
         $conv = Conversation::with(['contact', 'channel', 'assignedAgent'])
             ->where('company_id', $request->user()->company_id)
+            ->visibleToAgent($request->user())
             ->findOrFail($id);
 
         return response()->json($this->formatDetail($conv));
@@ -181,7 +171,9 @@ class ConversationController extends Controller
 
     private function findOwned(Request $request, string $id): Conversation
     {
-        return Conversation::where('company_id', $request->user()->company_id)->findOrFail($id);
+        return Conversation::where('company_id', $request->user()->company_id)
+            ->visibleToAgent($request->user())
+            ->findOrFail($id);
     }
 
     private function formatSummary(Conversation $c): array

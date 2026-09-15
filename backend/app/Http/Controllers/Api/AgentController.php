@@ -3,11 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Company;
 use App\Models\User;
 use App\Models\UserAuditLog;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -44,8 +45,7 @@ class AgentController extends Controller
 
         // Ambil presence dari Redis untuk semua agen
         $result = $agents->map(function (User $agent) use ($companyId) {
-            $presenceKey = "agent:presence:{$companyId}:{$agent->id}";
-            $presence    = Redis::hGetAll($presenceKey);
+            $presence = $this->presenceFor($companyId, $agent->id);
 
             return [
                 'id'                  => $agent->id,
@@ -56,14 +56,14 @@ class AgentController extends Controller
                 'skill_tags'          => $agent->skill_tags ?? [],
                 'max_concurrent_chats' => $agent->max_concurrent_chats ?? 5,
                 'is_active'           => $agent->is_active && $agent->deleted_at === null,
-                'status'              => $presence['status'] ?? 'offline',
-                'last_seen'           => $presence['last_seen'] ?? null,
+                'status'              => $presence['status'],
+                'last_seen'           => $presence['last_seen'],
             ];
         });
 
         // Filter berdasarkan status jika diminta
         if ($statusFilter !== 'all') {
-            $result = $result->filter(fn($a) => $a['status'] === $statusFilter)->values();
+            $result = $result->filter(fn ($a) => $a['status'] === $statusFilter)->values();
         }
 
         return response()->json(['data' => $result]);
@@ -71,39 +71,33 @@ class AgentController extends Controller
 
     /**
      * POST /api/agents
-     * Create a team member (agent/supervisor/admin). Never allows creating a
-     * super_admin — that role is reserved for direct DB bootstrap.
+     * Create a team member. The set of grantable roles comes from the actor's
+     * own role (User::assignableRoles), so super_admin can never be created
+     * through the API regardless of who is asking.
      */
     public function store(Request $request): JsonResponse
     {
         $actor   = $request->user();
         $company = $actor->company;
 
-        // Admins can create any role; supervisors can add agents only.
-        if ($actor->isSuperAdmin() || $actor->isAdmin()) {
-            // any role allowed below
-        } elseif ($actor->isSupervisor()) {
-            $requestedRole = $request->input('role', 'agent');
-            if ($requestedRole !== 'agent') {
-                return response()->json(['message' => 'Forbidden. Supervisors can only add agents.'], 403);
-            }
-        } else {
+        $assignable = $actor->assignableRoles();
+
+        if (empty($assignable)) {
             return response()->json(['message' => 'Forbidden. Only admins can manage team members.'], 403);
         }
 
-        // Plan limit: companies.max_agents
-        $existing = User::where('company_id', $company->id)->count();
-        if ($existing >= $company->max_agents) {
-            return response()->json([
-                'message' => "已达到套餐客服人数上限（最多 {$company->max_agents} 人）。请升级套餐。",
-            ], 422);
-        }
+        $this->assertSeatAvailable($company);
+
+        // A soft-deleted member still occupies the email (the unique rule below
+        // sees trashed rows), and is hidden from the list by default — so tell
+        // the caller to restore instead of leaving them with "email taken".
+        $this->assertEmailNotHeldByDeactivatedMember($request->input('email'), $company->id);
 
         $data = $request->validate([
             'name'                 => 'required|string|max:100',
             'email'                => ['required', 'email', 'max:150', Rule::unique('users')->where('company_id', $company->id)],
             'password'             => 'required|string|min:8',
-            'role'                 => 'sometimes|in:super_admin,admin,supervisor,agent',
+            'role'                 => ['sometimes', Rule::in($assignable)],
             'skill_tags'           => 'nullable|array',
             'skill_tags.*'         => 'string|max:50',
             'max_concurrent_chats' => 'sometimes|integer|min:1|max:50',
@@ -128,7 +122,6 @@ class AgentController extends Controller
     /**
      * PUT /api/agents/{id}
      * Edit name / role / skill tags / concurrency limit / password reset.
-     * Role changes require admin+; nobody can demote themselves below admin.
      */
     public function update(Request $request, string $id): JsonResponse
     {
@@ -140,29 +133,58 @@ class AgentController extends Controller
 
         $member = User::where('company_id', $actor->company_id)->findOrFail($id);
 
+        if (! $actor->canManageMember($member)) {
+            return response()->json(['message' => 'Forbidden. You cannot manage this member.'], 403);
+        }
+
+        // The member's current role is always accepted: the edit form resubmits
+        // it unchanged, and re-sending it must not be treated as a role change.
+        $allowedRoles = array_values(array_unique([...$actor->assignableRoles(), $member->role]));
+
         $data = $request->validate([
             'name'                 => 'sometimes|string|max:100',
-            'role'                 => 'sometimes|in:super_admin,admin,supervisor,agent',
-            'password'             => 'sometimes|nullable|min:8',
+            'role'                 => ['sometimes', Rule::in($allowedRoles)],
+            'password'             => 'sometimes|nullable|string|min:8',
             'skill_tags'           => 'sometimes|nullable|array',
             'skill_tags.*'         => 'string|max:50',
             'max_concurrent_chats' => 'sometimes|integer|min:1|max:50',
-            'password'             => 'sometimes|string|min:8',
         ]);
 
-        $before = $this->auditSnapshot($member);
-
-        if (isset($data['role'])
-            && $member->id === $actor->id
-            && ! in_array($data['role'], ['admin', 'super_admin'], true)) {
-            throw ValidationException::withMessages([
-                'role' => ['不能将自己的角色降级。请让其他管理员操作。'],
-            ]);
+        // An empty password field means "leave it alone", not "set it to empty".
+        if (empty($data['password'])) {
+            unset($data['password']);
         }
+
+        // Only an actual change counts: the edit form always submits the current
+        // role, so comparing against $member->role keeps idempotent PUTs working.
+        if (isset($data['role']) && $data['role'] !== $member->role) {
+            // Changing your own role is always someone else's job — this is what
+            // stops a supervisor from promoting themselves.
+            if ($member->id === $actor->id) {
+                throw ValidationException::withMessages([
+                    'role' => ['不能修改自己的角色。请让其他管理员操作。'],
+                ]);
+            }
+
+            if (! in_array($data['role'], ['admin', 'super_admin'], true)) {
+                $this->assertNotLastAdmin($member, '不能降级本公司最后一位管理员。请先指定另一位管理员。');
+            }
+        }
+
+        $before = $this->auditSnapshot($member);
+        $passwordChanged = isset($data['password']);
 
         $member->update($data);
 
-        $this->audit($request, $actor, $member, 'updated', $before, $this->auditSnapshot($member));
+        $after = $this->auditSnapshot($member);
+
+        // auditSnapshot deliberately never carries the hash, but a password reset
+        // has to leave a trace — otherwise a takeover is invisible in the log.
+        if ($passwordChanged) {
+            $after['password_changed'] = true;
+        }
+
+        $this->audit($request, $actor, $member, 'updated', $before, $after);
 
         return response()->json($this->present($member, $actor->company_id));
     }
@@ -182,11 +204,17 @@ class AgentController extends Controller
 
         $member = User::where('company_id', $actor->company_id)->findOrFail($id);
 
+        if (! $actor->canManageMember($member)) {
+            return response()->json(['message' => 'Forbidden. You cannot manage this member.'], 403);
+        }
+
         if ($member->id === $actor->id) {
             throw ValidationException::withMessages([
                 'id' => ['不能停用自己的账号。请让其他管理员操作。'],
             ]);
         }
+
+        $this->assertNotLastAdmin($member, '不能停用本公司最后一位管理员。请先指定另一位管理员。');
 
         $before = $this->auditSnapshot($member);
 
@@ -199,11 +227,137 @@ class AgentController extends Controller
         return response()->json(['message' => 'deactivated', 'id' => $member->id]);
     }
 
+    /**
+     * POST /api/agents/{id}/restore
+     * Reverse of destroy(). Both is_active and deleted_at have to be cleared —
+     * login checks is_active and the soft-delete scope independently.
+     *
+     * agent_channels rows survive the soft delete, so channel assignments come
+     * back with the member.
+     */
+    public function restore(Request $request, string $id): JsonResponse
+    {
+        $actor = $request->user();
+
+        if (! $actor->canOverrideAssignment()) {
+            return response()->json(['message' => 'Forbidden. Only admins can manage team members.'], 403);
+        }
+
+        $member = User::withTrashed()
+            ->where('company_id', $actor->company_id)
+            ->findOrFail($id);
+
+        if (! $actor->canManageMember($member)) {
+            return response()->json(['message' => 'Forbidden. You cannot manage this member.'], 403);
+        }
+
+        if (! $member->trashed()) {
+            throw ValidationException::withMessages([
+                'id' => ['该成员未处于停用状态。'],
+            ]);
+        }
+
+        // Deactivated members do not count against max_agents, so restoring one
+        // has to re-check the plan limit — otherwise deactivate/hire/restore
+        // walks straight past it.
+        $this->assertSeatAvailable($actor->company);
+
+        $before = $this->auditSnapshot($member);
+
+        $member->restore();
+        $member->update(['is_active' => true]);
+
+        $this->audit($request, $actor, $member, 'restored', $before, $this->auditSnapshot($member));
+
+        return response()->json($this->present($member, $actor->company_id));
+    }
+
     // ── Private ───────────────────────────────────────────────────────────────
+
+    /**
+     * Presence hash written by two different services with different field
+     * names: the realtime server writes last_heartbeat (epoch ms), Laravel's
+     * own /internal/agent/heartbeat writes last_seen (ISO-8601). Read both.
+     */
+    private function presenceFor(string $companyId, string $userId): array
+    {
+        $presence = Redis::hGetAll("agent:presence:{$companyId}:{$userId}");
+
+        $lastSeen = $presence['last_seen'] ?? null;
+
+        if (! $lastSeen && ! empty($presence['last_heartbeat'])) {
+            $lastSeen = CarbonImmutable::createFromTimestampMs((int) $presence['last_heartbeat'])->toISOString();
+        }
+
+        return [
+            'status'    => $presence['status'] ?? 'offline',
+            'last_seen' => $lastSeen,
+        ];
+    }
+
+    private function assertSeatAvailable(Company $company): void
+    {
+        // Soft-deleted members are excluded by the global scope, so deactivated
+        // seats are free seats.
+        $existing = User::where('company_id', $company->id)->count();
+
+        if ($existing >= $company->max_agents) {
+            throw ValidationException::withMessages([
+                'seats' => ["已达到套餐客服人数上限（最多 {$company->max_agents} 人）。请升级套餐。"],
+            ]);
+        }
+    }
+
+    private function assertEmailNotHeldByDeactivatedMember(mixed $email, string $companyId): void
+    {
+        if (! is_string($email) || $email === '') {
+            return;
+        }
+
+        $deactivated = User::onlyTrashed()
+            ->where('company_id', $companyId)
+            ->where('email', $email)
+            ->first();
+
+        if ($deactivated) {
+            throw ValidationException::withMessages([
+                'email' => ["该邮箱属于已停用成员「{$deactivated->name}」，请改为恢复该账号。"],
+            ]);
+        }
+    }
+
+    /**
+     * Guard against a company losing its last admin — otherwise nobody inside
+     * the tenant can manage members any more and it takes a /system call to
+     * recover. Mirrors SystemUserController's last-super_admin check, scoped to
+     * one company.
+     *
+     * Defence in depth: single-threaded this cannot currently fire, because the
+     * actor is always an active admin who is barred from acting on themselves.
+     * It does not close the concurrent case (two admins demoting each other at
+     * once) — that needs a row lock, which SQLite compiles away, so it would be
+     * untestable here.
+     */
+    private function assertNotLastAdmin(User $member, string $message): void
+    {
+        if (! in_array($member->role, ['admin', 'super_admin'], true)) {
+            return;
+        }
+
+        $othersRemain = User::where('company_id', $member->company_id)
+            ->whereIn('role', ['admin', 'super_admin'])
+            ->where('is_active', true)
+            ->where('id', '!=', $member->id)
+            ->exists();
+
+        if (! $othersRemain) {
+            throw ValidationException::withMessages(['role' => [$message]]);
+        }
+    }
 
     private function present(User $u, string $companyId): array
     {
-        $presence = Redis::hGetAll("agent:presence:{$companyId}:{$u->id}");
+        $presence = $this->presenceFor($companyId, $u->id);
 
         return [
             'id'                   => $u->id,
@@ -213,9 +367,9 @@ class AgentController extends Controller
             'avatar_url'           => $u->avatar_url,
             'skill_tags'           => $u->skill_tags ?? [],
             'max_concurrent_chats' => $u->max_concurrent_chats ?? 5,
-            'is_active'            => $u->is_active,
-            'status'               => $presence['status'] ?? 'offline',
-            'last_seen'            => $presence['last_seen'] ?? null,
+            'is_active'            => $u->is_active && $u->deleted_at === null,
+            'status'               => $presence['status'],
+            'last_seen'            => $presence['last_seen'],
             'created_at'           => $u->created_at?->toISOString(),
         ];
     }

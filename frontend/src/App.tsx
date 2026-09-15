@@ -19,18 +19,48 @@ import SystemCompaniesPage from './pages/system/SystemCompaniesPage';
 import SystemUsersPage from './pages/system/SystemUsersPage';
 import ContactsPage from './pages/contacts/ContactsPage';
 import AgentChatPage from './pages/agent/AgentChatPage';
+import type { AgentRole } from './types';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  // Use single selector so either flag change triggers re-render
+  const { isHydrated, isAuthenticated } = useAuthStore((s) => ({
+    isHydrated:      s.isHydrated,
+    isAuthenticated: s.isAuthenticated,
+  }));
+  if (!isHydrated) return (
+    <div className="flex items-center justify-center h-screen bg-gray-50">
+      <div className="text-gray-400 text-sm">加载中...</div>
+    </div>
+  );
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 
 function AgentOnly({ children }: { children: React.ReactNode }) {
-  const role = useAuthStore((s) => s.user?.role);
+  const { isHydrated, role } = useAuthStore((s) => ({
+    isHydrated: s.isHydrated,
+    role:       s.user?.role,
+  }));
+  if (!isHydrated) return null;
   if (role !== 'agent') return <Navigate to="/inbox" replace />;
   return <>{children}</>;
 }
+
+// Scalar selectors on purpose: an object-returning selector allocates a new
+// reference every render, which zustand v4 compares with Object.is.
+function RequireRole({ roles, redirectTo = '/inbox', children }: {
+  roles: AgentRole[];
+  redirectTo?: string;
+  children: React.ReactNode;
+}) {
+  const isHydrated = useAuthStore((s) => s.isHydrated);
+  const role       = useAuthStore((s) => s.user?.role);
+  if (!isHydrated) return null;
+  if (!role || !roles.includes(role)) return <Navigate to={redirectTo} replace />;
+  return <>{children}</>;
+}
+
+const MANAGER_ROLES: AgentRole[] = ['super_admin', 'admin', 'supervisor'];
 
 interface NavItem {
   to?: string;
@@ -64,7 +94,6 @@ function AppShell() {
   const navItems: NavItem[] = isSuperAdmin
     ? [
         { to: '/inbox', icon: '💬', label: '收件箱' },
-        { to: '/agent', icon: '🎧', label: '客服聊天' },
         { to: '/bot-flows', icon: '🤖', label: '机器人' },
         { to: '/broadcast', icon: '📢', label: '群发' },
         { to: '/voice-agents', icon: '☎️', label: '智能外呼' },
@@ -212,10 +241,14 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
 
+        {/* Agents get the standalone /agent chat page only — everything behind
+            the AppShell sidebar is for supervisors and above. */}
         <Route
           element={
             <RequireAuth>
-              <AppShell />
+              <RequireRole roles={MANAGER_ROLES} redirectTo="/agent">
+                <AppShell />
+              </RequireRole>
             </RequireAuth>
           }
         >
@@ -230,20 +263,20 @@ export default function App() {
           <Route path="/voice-agents"     element={<VoiceAgentsPage />} />
           <Route path="/contacts"         element={<ContactsPage />} />
           <Route path="/settings/company"  element={<CompanySettingsPage />} />
-          <Route path="/settings/agents"   element={<AgentsSettingsPage />} />
+          <Route path="/settings/agents"   element={
+            <RequireRole roles={MANAGER_ROLES}><AgentsSettingsPage /></RequireRole>
+          } />
           <Route path="/system"           element={<SystemDashboardPage />} />
           <Route path="/system/companies" element={<SystemCompaniesPage />} />
           <Route path="/system/users"     element={<SystemUsersPage />} />
         </Route>
 
-        <Route path="*" element={<Navigate to="/inbox" replace />} />
-      </Routes>
-
-      {/* Standalone pages — no AppShell sidebar */}
-      <Routes>
+        {/* Standalone pages — no AppShell sidebar */}
         <Route path="/agent" element={
           <RequireAuth><AgentOnly><AgentChatPage /></AgentOnly></RequireAuth>
         } />
+
+        <Route path="*" element={<Navigate to="/inbox" replace />} />
       </Routes>
     </BrowserRouter>
   );

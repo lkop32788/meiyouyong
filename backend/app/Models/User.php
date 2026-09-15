@@ -66,4 +66,42 @@ class User extends Authenticatable
     {
         return in_array($this->role, ['super_admin', 'admin', 'supervisor']);
     }
+
+    /**
+     * Roles this user is allowed to grant when creating or editing a member.
+     * super_admin is never grantable through the API — it is reserved for
+     * direct DB bootstrap (see AdminUserSeeder).
+     */
+    public function assignableRoles(): array
+    {
+        return match ($this->role) {
+            'super_admin', 'admin' => ['admin', 'supervisor', 'agent'],
+            'supervisor'           => ['agent'],
+            default                => [],
+        };
+    }
+
+    /**
+     * Whether this user may edit / deactivate / restore $target.
+     *
+     * Supervisors are deliberately limited to agents: they may create agents
+     * (see AgentController::store), so letting them edit higher roles would
+     * hand them a password-reset path into an admin account.
+     *
+     * Nullable because callers resolve the target through a relation that can
+     * come back null (e.g. AgentChannel::agent for a soft-deleted member).
+     */
+    public function canManageMember(?self $target): bool
+    {
+        if ($target === null || $this->company_id !== $target->company_id) {
+            return false;
+        }
+
+        return match ($this->role) {
+            'super_admin' => true,
+            'admin'       => $target->role !== 'super_admin',
+            'supervisor'  => $target->role === 'agent',
+            default       => false,
+        };
+    }
 }

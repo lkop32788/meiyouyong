@@ -8,6 +8,7 @@ interface AuthState {
   socketToken: string | null;
   user: AuthUser | null;
   isAuthenticated: boolean;
+  isHydrated: boolean;
 
   login: (companySlug: string, email: string, password: string) => Promise<void>;
   logout: () => void;
@@ -20,6 +21,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   socketToken:     localStorage.getItem('socket_token'),
   user:            null,
   isAuthenticated: !!localStorage.getItem('auth_token'),
+  isHydrated:      false,
 
   login: async (companySlug, email, password) => {
     const { data } = await api.post('/auth/login', {
@@ -43,7 +45,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       timezone:            data.user.timezone,
     };
 
-    set({ token: data.token, socketToken: data.socket_token, user, isAuthenticated: true });
+    set({ token: data.token, socketToken: data.socket_token, user, isAuthenticated: true, isHydrated: true });
     initSocket(data.socket_token);
   },
 
@@ -52,7 +54,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.removeItem('auth_token');
     localStorage.removeItem('socket_token');
     disconnectSocket();
-    set({ token: null, socketToken: null, user: null, isAuthenticated: false });
+    set({ token: null, socketToken: null, user: null, isAuthenticated: false, isHydrated: false });
   },
 
   refreshSocketToken: async () => {
@@ -80,7 +82,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         avatarUrl:           data.avatar_url ?? null,
         timezone:            data.timezone,
       };
-      set({ user, isAuthenticated: true });
+      set({ user, isAuthenticated: true, isHydrated: true });
 
       const socketToken = localStorage.getItem('socket_token') ?? '';
       if (socketToken) initSocket(socketToken);
