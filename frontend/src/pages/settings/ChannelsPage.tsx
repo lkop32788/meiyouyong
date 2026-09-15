@@ -156,6 +156,7 @@ export default function ChannelsPage() {
 
   // WhatsApp QR pairing modal state
   const [qrChannel, setQrChannel]       = useState<Channel | null>(null);
+  const [registeringId, setRegisteringId] = useState<string | null>(null);
   const [qrStatus, setQrStatus]         = useState<QrStatus | null>(null);
   const [qrLoading, setQrLoading]       = useState(false);
 
@@ -292,6 +293,23 @@ export default function ChannelsPage() {
       toast.success('Webhook 地址已复制');
     } catch {
       toast.error('复制失败');
+    }
+  };
+
+  // Telegram only delivers to a URL registered via setWebhook, and only sends
+  // the secret-token header the gateway checks when that registration carried
+  // one. Nothing in the app ever made that call, so inbound never arrived.
+  const registerTelegramWebhook = async (ch: Channel) => {
+    setRegisteringId(ch.id);
+    try {
+      const { data } = await api.post(`/channels/${ch.id}/telegram/register-webhook`);
+      toast.success(data.bot ? `已注册到 @${data.bot}` : 'Webhook 注册成功');
+      load();
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(msg ?? 'Webhook 注册失败');
+    } finally {
+      setRegisteringId(null);
     }
   };
 
@@ -518,6 +536,16 @@ export default function ChannelsPage() {
                     {ch.type === 'whatsapp_qr' && (
                       <button onClick={() => openQrModal(ch)} className="text-xs text-brand-600 hover:underline mr-3">
                         {ch.is_active ? '扫码 / 管理' : '扫码登录'}
+                      </button>
+                    )}
+                    {ch.type === 'telegram' && (
+                      <button
+                        onClick={() => registerTelegramWebhook(ch)}
+                        disabled={registeringId === ch.id}
+                        className="text-xs text-brand-600 hover:underline mr-3 disabled:opacity-50"
+                        title="向 Telegram 注册回调地址并写入验签密钥"
+                      >
+                        {registeringId === ch.id ? '注册中...' : '注册 Webhook'}
                       </button>
                     )}
                     {ch.webhook_url && (

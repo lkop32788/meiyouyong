@@ -107,6 +107,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::get('/{id}/qr/status',      [ChannelConnectionController::class, 'qrStatus']);
         Route::post('/{id}/qr/disconnect', [ChannelConnectionController::class, 'qrDisconnect']);
         Route::post('/{id}/qr/sync',       [ChannelConnectionController::class, 'qrSync']);
+        Route::post('/{id}/telegram/register-webhook', [ChannelConnectionController::class, 'telegramRegisterWebhook'])
+            ->where('id', '[0-9a-f-]{36}');
 
         // Facebook Page connect flow (OAuth)
         Route::get('/facebook/config',    [ChannelConnectionController::class, 'facebookConfig']);
