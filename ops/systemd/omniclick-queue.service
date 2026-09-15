@@ -1,0 +1,28 @@
+[Unit]
+Description=OmniClick queue worker (Laravel, Redis connection)
+Documentation=https://github.com/lkop32788/meiyouyong
+After=network-online.target redis-server.service mariadb.service mongod.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# See omniclick-gateway.service for why this is root.
+#
+# When the app moves off `php artisan serve` onto php-fpm, this unit and the
+# fpm pool MUST run as the same user — otherwise ExportReportJob writes
+# storage/app/exports/ as one user and the web tier cannot manage it, and the
+# two fight over ownership of storage/logs/laravel.log.
+User=root
+WorkingDirectory=/root/omni-click-apps/backend
+# --max-time recycles the worker hourly so a leaked connection or a stale
+# config cache cannot outlive the hour. systemd restarts it immediately.
+ExecStart=/usr/bin/php artisan queue:work --tries=3 --backoff=5,30,60 --max-time=3600
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=0
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=omniclick-queue
+
+[Install]
+WantedBy=multi-user.target

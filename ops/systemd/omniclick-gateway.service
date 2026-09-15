@@ -1,0 +1,26 @@
+[Unit]
+Description=OmniClick webhook gateway (Express, :3001)
+Documentation=https://github.com/lkop32788/meiyouyong
+After=network-online.target redis-server.service rabbitmq-server.service mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Runs as root because the application lives under /root, which is mode 700 —
+# www-data cannot traverse into it. Moving the deployment out of /root is a
+# prerequisite for dropping privileges here; see ops/README.md.
+User=root
+WorkingDirectory=/root/omni-click-apps/gateway
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/env node server.js
+Restart=always
+RestartSec=5
+# Do not give up: a channel gateway that stops restarting silently drops every
+# inbound webhook.
+StartLimitIntervalSec=0
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=omniclick-gateway
+
+[Install]
+WantedBy=multi-user.target

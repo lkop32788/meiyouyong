@@ -10,6 +10,8 @@ use App\Services\RealtimeEventPublisher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class ConversationController extends Controller
 {
@@ -95,7 +97,19 @@ class ConversationController extends Controller
 
         $this->realtime->conversationResolved($conv);
 
-        ConversationResolvedAnalyticsJob::dispatch($conv->id);
+        // Analytics is a side effect of resolving, not part of it. An unguarded
+        // dispatch here meant a queue outage returned 500 *after* the
+        // conversation had already been marked resolved and the realtime event
+        // pushed — the caller saw a failure for an action that had succeeded.
+        try {
+            ConversationResolvedAnalyticsJob::dispatch($conv->id);
+        } catch (Throwable $e) {
+            Log::error('Failed to queue resolve analytics', [
+                'conversation_id' => $conv->id,
+                'company_id'      => $conv->company_id,
+                'error'           => $e->getMessage(),
+            ]);
+        }
 
         return response()->json(['status' => 'resolved']);
     }

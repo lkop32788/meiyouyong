@@ -1,0 +1,22 @@
+[Unit]
+Description=OmniClick realtime server (Socket.io, :3002)
+Documentation=https://github.com/lkop32788/meiyouyong
+After=network-online.target redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# See omniclick-gateway.service for why this is root.
+User=root
+WorkingDirectory=/root/omni-click-apps/realtime-server
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/env node server.js
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=0
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=omniclick-realtime
+
+[Install]
+WantedBy=multi-user.target

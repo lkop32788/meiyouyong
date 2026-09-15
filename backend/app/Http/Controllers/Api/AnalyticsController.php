@@ -175,13 +175,27 @@ class AnalyticsController extends Controller
         // Dispatch async export job
         $jobId = \Illuminate\Support\Str::uuid()->toString();
 
-        \App\Jobs\ExportReportJob::dispatch(
-            $request->user()->company_id,
-            $type,
-            $from,
-            $to,
-            $jobId
-        );
+        // Unlike the resolve-analytics dispatch, the export IS the request —
+        // there is nothing useful to return if it cannot be queued, so fail
+        // loudly with a 503 rather than handing back a job id that will never
+        // produce a file.
+        try {
+            \App\Jobs\ExportReportJob::dispatch(
+                $request->user()->company_id,
+                $type,
+                $from,
+                $to,
+                $jobId
+            );
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Failed to queue report export', [
+                'company_id' => $request->user()->company_id,
+                'type'       => $type,
+                'error'      => $e->getMessage(),
+            ]);
+
+            return response()->json(['message' => '导出任务排队失败，请稍后重试。'], 503);
+        }
 
         return response()->json(['job_id' => $jobId]);
     }

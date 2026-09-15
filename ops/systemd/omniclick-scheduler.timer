@@ -1,0 +1,14 @@
+[Unit]
+Description=Run OmniClick's scheduler every minute
+Documentation=https://github.com/lkop32788/meiyouyong
+
+[Timer]
+# A systemd timer, not cron: cron is not installed on the deployment host.
+OnCalendar=*:0/1
+# Do not fire a burst of catch-up runs after downtime.
+Persistent=false
+AccuracySec=1s
+Unit=omniclick-scheduler.service
+
+[Install]
+WantedBy=timers.target

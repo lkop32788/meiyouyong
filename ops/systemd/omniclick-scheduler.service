@@ -1,0 +1,13 @@
+[Unit]
+Description=OmniClick scheduled tasks (one tick of Laravel's scheduler)
+Documentation=https://github.com/lkop32788/meiyouyong
+
+[Service]
+Type=oneshot
+# See omniclick-gateway.service for why this is root.
+User=root
+WorkingDirectory=/root/omni-click-apps/backend
+ExecStart=/usr/bin/php artisan schedule:run
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=omniclick-scheduler
