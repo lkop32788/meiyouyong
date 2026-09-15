@@ -37,10 +37,8 @@ class ProcessBotTimeout implements ShouldQueue
 
         $conversation = Conversation::find($this->conversationId);
         if ($conversation) {
-            $outbound->send($conversation, [
-                'content_type' => 'text',
-                'content'      => ['text' => 'Maaf, kami tidak menerima balasan Anda. Sesi bot telah berakhir.'],
-                'sender_type'  => 'bot',
+            $outbound->sendSystemMessage($conversation, 'text', [
+                'body' => 'Maaf, kami tidak menerima balasan Anda. Sesi bot telah berakhir.',
             ]);
         }
 

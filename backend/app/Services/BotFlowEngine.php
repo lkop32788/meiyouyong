@@ -128,11 +128,9 @@ class BotFlowEngine
     {
         $text = $this->interpolate($node['data']['text'] ?? '', $session->variables ?? []);
 
-        $this->outbound->send($conv, [
-            'content_type' => 'text',
-            'content'      => ['text' => $text],
-            'sender_type'  => 'bot',
-        ]);
+        // 'body', not 'text': that is the key every adapter and the preview
+        // builder read. The old call also passed 2 args to a 6-arg signature.
+        $this->outbound->sendSystemMessage($conv, 'text', ['body' => $text]);
 
         return ['action' => 'advance'];
     }

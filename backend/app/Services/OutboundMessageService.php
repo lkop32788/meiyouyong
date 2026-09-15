@@ -50,11 +50,52 @@ class OutboundMessageService
         array        $content,
         ?string      $replyToProviderMsgId = null
     ): string {
+        return $this->deliver($conv, $contact, $contentType, $content, $replyToProviderMsgId, 'agent', $agentId);
+    }
+
+    /**
+     * Send without an agent behind it — bot flows, CSAT surveys, broadcasts.
+     *
+     * Exists because those callers have neither a Contact nor an agent id to
+     * hand over, and because persistOutbound used to hardcode sender_type
+     * 'agent': routing them through send() would file every bot message as an
+     * agent message and corrupt the bot-containment analytics.
+     *
+     * @throws ChannelSendException  Bila conversation tidak punya contact
+     */
+    public function sendSystemMessage(
+        Conversation $conv,
+        string       $contentType,
+        array        $content,
+        string       $senderType = 'bot',
+        ?string      $senderId = null
+    ): string {
+        $contact = $conv->contact;
+
+        if (! $contact) {
+            throw new ChannelSendException(
+                'Conversation has no contact to send to',
+                channelType: $conv->channel?->type ?? 'unknown',
+            );
+        }
+
+        return $this->deliver($conv, $contact, $contentType, $content, null, $senderType, $senderId);
+    }
+
+    private function deliver(
+        Conversation $conv,
+        Contact      $contact,
+        string       $contentType,
+        array        $content,
+        ?string      $replyToProviderMsgId,
+        string       $senderType,
+        ?string      $senderId
+    ): string {
         // ── 1. Rate limit check ───────────────────────────────────────────────
         $this->checkRateLimit($conv);
 
         // ── 2. Persist ke MongoDB (status = pending) ──────────────────────────
-        $mongoId = $this->persistence->persistOutbound($conv, $agentId, $contentType, $content);
+        $mongoId = $this->persistence->persistOutbound($conv, $senderId, $contentType, $content, $senderType);
 
         // ── 3. Kirim via channel (dengan failover) ────────────────────────────
         try {

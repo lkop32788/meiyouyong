@@ -21,7 +21,8 @@ class AgentChannelController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
-        $query = AgentChannel::with(['agent:id,name,email', 'channel:id,name,type,is_active'])
+        // settings must be selected — display_phone_number lives inside it.
+        $query = AgentChannel::with(['agent:id,name,email', 'channel:id,name,type,is_active,settings'])
             ->where('company_id', $request->user()->company_id);
 
         if ($request->query('agent_id')) {
@@ -31,14 +32,14 @@ class AgentChannelController extends Controller
         $rows = $query->orderByDesc('created_at')->get();
 
         return response()->json($rows->map(fn ($ac) => [
-            'id'                 => $ac->id,
-            'agent_id'           => $ac->agent_id,
-            'agent_name'         => $ac->agent?->name,
-            'channel_id'         => $ac->channel_id,
-            'channel_name'       => $ac->channel?->name,
-            'channel_type'       => $ac->channel?->type,
-            'display_phone'      => $ac->channel?->display_phone_number,
-            'created_at'         => $ac->created_at?->toISOString(),
+            'id'                   => $ac->id,
+            'agent_id'             => $ac->agent_id,
+            'agent_name'           => $ac->agent?->name,
+            'channel_id'           => $ac->channel_id,
+            'channel_name'         => $ac->channel?->name,
+            'channel_type'         => $ac->channel?->type,
+            'display_phone_number' => $ac->channel?->display_phone_number,
+            'created_at'           => $ac->created_at?->toISOString(),
         ]));
     }
 
@@ -69,6 +70,10 @@ class AgentChannelController extends Controller
             return response()->json(['message' => '未找到该客服账号'], 422);
         }
 
+        if (! $request->user()->canManageMember($agent)) {
+            return response()->json(['message' => 'Forbidden. You cannot manage this member.'], 403);
+        }
+
         // Channel must belong to the same company and be active
         $channel = Channel::where('id', $data['channel_id'])
             ->where('company_id', $companyId)
@@ -87,13 +92,13 @@ class AgentChannelController extends Controller
         if ($existing) {
             $existing->load('channel');
             return response()->json([
-                'id'                 => $existing->id,
-                'agent_id'           => $existing->agent_id,
-                'channel_id'         => $existing->channel_id,
-                'channel_name'       => $existing->channel?->name,
-                'channel_type'       => $existing->channel?->type,
-                'display_phone'      => $existing->channel?->settings['display_phone_number'] ?? null,
-                'created_at'         => $existing->created_at?->toISOString(),
+                'id'                   => $existing->id,
+                'agent_id'             => $existing->agent_id,
+                'channel_id'           => $existing->channel_id,
+                'channel_name'         => $existing->channel?->name,
+                'channel_type'         => $existing->channel?->type,
+                'display_phone_number' => $existing->channel?->display_phone_number,
+                'created_at'           => $existing->created_at?->toISOString(),
             ]);
         }
 
@@ -105,13 +110,13 @@ class AgentChannelController extends Controller
         $ac->load('channel');
 
         return response()->json([
-            'id'                 => $ac->id,
-            'agent_id'           => $ac->agent_id,
-            'channel_id'         => $ac->channel_id,
-            'channel_name'       => $ac->channel?->name,
-            'channel_type'       => $ac->channel?->type,
-            'display_phone'      => $ac->channel?->settings['display_phone_number'] ?? null,
-            'created_at'         => $ac->created_at?->toISOString(),
+            'id'                   => $ac->id,
+            'agent_id'             => $ac->agent_id,
+            'channel_id'           => $ac->channel_id,
+            'channel_name'         => $ac->channel?->name,
+            'channel_type'         => $ac->channel?->type,
+            'display_phone_number' => $ac->channel?->display_phone_number,
+            'created_at'           => $ac->created_at?->toISOString(),
         ], 201);
     }
 
@@ -126,6 +131,14 @@ class AgentChannelController extends Controller
 
         $ac = AgentChannel::where('company_id', $request->user()->company_id)
             ->findOrFail($id);
+
+        // withTrashed: a deactivated member keeps their assignments, and the
+        // relation would otherwise resolve to null and skip the check.
+        $agent = User::withTrashed()->find($ac->agent_id);
+
+        if (! $request->user()->canManageMember($agent)) {
+            return response()->json(['message' => 'Forbidden. You cannot manage this member.'], 403);
+        }
 
         $ac->delete();
 

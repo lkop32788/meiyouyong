@@ -5,8 +5,9 @@ namespace App\Jobs;
 use App\Models\AudienceSnapshotRecipient;
 use App\Models\BroadcastCampaign;
 use App\Models\Channel;
-use App\Services\Channels\AdapterRegistry;
 use App\Services\Channels\ChannelSendException;
+use App\Services\ConversationOrchestrator;
+use App\Services\OutboundMessageService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -26,8 +27,10 @@ class ProcessBroadcastChunkJob implements ShouldQueue
         private readonly int    $chunkEndId,
     ) {}
 
-    public function handle(AdapterRegistry $adapters): void
-    {
+    public function handle(
+        OutboundMessageService $outbound,
+        ConversationOrchestrator $conversations,
+    ): void {
         $campaign = BroadcastCampaign::find($this->campaignId);
 
         if (! $campaign || $campaign->status !== 'running') {
@@ -44,8 +47,6 @@ class ProcessBroadcastChunkJob implements ShouldQueue
             ->whereBetween('id', [$this->chunkStartId, $this->chunkEndId])
             ->orderBy('id')
             ->get();
-
-        $adapter = $adapters->forChannel($channel->channel_type);
 
         foreach ($recipients as $recipient) {
             // Re-check campaign status on each recipient (for pause support)
@@ -67,16 +68,19 @@ class ProcessBroadcastChunkJob implements ShouldQueue
             try {
                 $messageText = $this->renderMessage($campaign, $recipient);
 
-                $adapter->send($channel, [
-                    'to'           => $recipient->channel_identity,
-                    'content_type' => 'text',
-                    'content'      => ['text' => $messageText],
-                    'metadata'     => [
-                        'campaign_id'  => $campaign->id,
-                        'contact_id'   => $recipient->contact_id,
-                        'is_broadcast' => true,
-                    ],
-                ]);
+                // Was calling the 6-arg ChannelAdapterInterface::send() with 2
+                // args — a guaranteed ArgumentCountError. Route through
+                // OutboundMessageService instead so the broadcast gets the same
+                // treatment as any other outbound message: persisted to MongoDB,
+                // rate limited, failover-capable, and threaded into a
+                // conversation so the contact's reply has somewhere to land.
+                $conv = $conversations->findOrCreateForOutbound(
+                    $campaign->company_id,
+                    $channel->id,
+                    $recipient->contact_id,
+                );
+
+                $outbound->sendSystemMessage($conv, 'text', ['body' => $messageText], 'broadcast');
 
                 $recipient->update(['status' => 'sent', 'processed_at' => now()]);
             } catch (ChannelSendException $e) {

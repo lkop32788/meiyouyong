@@ -2,44 +2,66 @@
 
 namespace Database\Factories;
 
+use App\Models\Company;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 
 /**
  * @extends Factory<User>
+ *
+ * The stock Laravel factory did not fit this schema (UUID PKs, required
+ * company_id, no email_verified_at column) — see DatabaseSeeder.
  */
 class UserFactory extends Factory
 {
-    /**
-     * The current password being used by the factory.
-     */
-    protected static ?string $password;
+    protected $model = User::class;
 
-    /**
-     * Define the model's default state.
-     *
-     * @return array<string, mixed>
-     */
+    /** Plain password every factory user gets, so tests can log in as them. */
+    public const PASSWORD = 'password123';
+
     public function definition(): array
     {
         return [
-            'name' => fake()->name(),
-            'email' => fake()->unique()->safeEmail(),
-            'email_verified_at' => now(),
-            'password' => static::$password ??= Hash::make('password'),
-            'remember_token' => Str::random(10),
+            'company_id'           => Company::factory(),
+            'name'                 => fake()->name(),
+            'email'                => fake()->unique()->safeEmail(),
+            'password'             => self::PASSWORD, // hashed by the 'hashed' cast
+            'role'                 => 'agent',
+            'skill_tags'           => null,
+            'max_concurrent_chats' => 5,
+            'locale'               => 'id',
+            'timezone'             => 'Asia/Jakarta',
+            'is_active'            => true,
         ];
     }
 
-    /**
-     * Indicate that the model's email address should be unverified.
-     */
-    public function unverified(): static
+    public function superAdmin(): static
     {
-        return $this->state(fn (array $attributes) => [
-            'email_verified_at' => null,
-        ]);
+        return $this->state(fn () => ['role' => 'super_admin']);
+    }
+
+    public function admin(): static
+    {
+        return $this->state(fn () => ['role' => 'admin']);
+    }
+
+    public function supervisor(): static
+    {
+        return $this->state(fn () => ['role' => 'supervisor']);
+    }
+
+    public function agent(): static
+    {
+        return $this->state(fn () => ['role' => 'agent']);
+    }
+
+    /**
+     * Mirrors AgentController::destroy — is_active false AND soft-deleted.
+     * deleted_at is not fillable, so it has to be set after creation.
+     */
+    public function deactivated(): static
+    {
+        return $this->state(fn () => ['is_active' => false])
+            ->afterCreating(fn (User $user) => $user->delete());
     }
 }

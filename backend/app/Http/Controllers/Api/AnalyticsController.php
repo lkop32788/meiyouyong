@@ -116,15 +116,22 @@ class AnalyticsController extends Controller
         $rows = DB::table('analytics_hourly_volume')
             ->where('company_id', $companyId)
             ->where('hour_bucket', '>=', now()->subWeeks($weeks))
-            ->selectRaw("
-                DATEPART(dw, hour_bucket) - 1 AS day_of_week,
-                DATEPART(HOUR, hour_bucket)   AS hour_of_day,
-                SUM(inbound_count)            AS volume
-            ")
-            ->groupByRaw('DATEPART(dw, hour_bucket), DATEPART(HOUR, hour_bucket)')
+            // DAYOFWEEK() is 1=Sunday..7=Saturday; -1 gives the 0=Sunday..6=Saturday
+            // index the frontend's ['周日'..'周六'] array is keyed by.
+            ->selectRaw('
+                DAYOFWEEK(hour_bucket) - 1 AS day_of_week,
+                HOUR(hour_bucket)          AS hour_of_day,
+                SUM(inbound_count)         AS volume
+            ')
+            // Group by the aliases, not the raw expressions: under
+            // ONLY_FULL_GROUP_BY, `DAYOFWEEK(x) - 1` in SELECT does not match a
+            // bare `DAYOFWEEK(x)` in GROUP BY and the query is rejected.
+            ->groupByRaw('day_of_week, hour_of_day')
             ->orderByRaw('day_of_week, hour_of_day')
             ->get()
-            ->map(fn ($r) => [$r->day_of_week, $r->hour_of_day, $r->volume]);
+            // Cast: MySQL returns SUM() as a string, but the frontend types this
+            // tuple as [number, number, number] and does arithmetic on it.
+            ->map(fn ($r) => [(int) $r->day_of_week, (int) $r->hour_of_day, (int) $r->volume]);
 
         return response()->json($rows);
     }
@@ -143,12 +150,12 @@ class AnalyticsController extends Controller
             ->where('c.company_id', $companyId)
             ->whereIn('c.status', ['open', 'pending'])
             ->whereNull('c.first_response_at')
-            ->whereRaw('DATEDIFF(SECOND, c.created_at, GETUTCDATE()) > sc.first_response_seconds')
+            ->whereRaw('TIMESTAMPDIFF(SECOND, c.created_at, UTC_TIMESTAMP()) > sc.first_response_seconds')
             ->select(
                 'c.id as conversation_id',
                 'c.last_message_preview',
                 'c.created_at',
-                DB::raw('DATEDIFF(SECOND, c.created_at, GETUTCDATE()) AS age_seconds'),
+                DB::raw('TIMESTAMPDIFF(SECOND, c.created_at, UTC_TIMESTAMP()) AS age_seconds'),
                 'sc.first_response_seconds AS threshold_seconds',
                 'u.name as agent_name'
             )

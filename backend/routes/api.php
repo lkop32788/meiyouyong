@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\AiConfigController;
 use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\MessageController;
+use App\Http\Controllers\Api\QuickReplyController;
 use App\Http\Controllers\Api\MetaAppConfigController;
 use App\Http\Controllers\Api\TemplateController;
 use App\Http\Controllers\Auth\LoginController;
@@ -73,11 +74,20 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::post('agents',   [AgentController::class, 'store']);
     Route::put('agents/{id}',    [AgentController::class, 'update'])->where('id', '[0-9a-f-]{36}');
     Route::delete('agents/{id}', [AgentController::class, 'destroy'])->where('id', '[0-9a-f-]{36}');
+    Route::post('agents/{id}/restore', [AgentController::class, 'restore'])->where('id', '[0-9a-f-]{36}');
 
     // Agent-channel assignments (supervisor+ only)
     Route::get('agent-channels',        [AgentChannelController::class, 'index']);
     Route::post('agent-channels',       [AgentChannelController::class, 'store']);
     Route::delete('agent-channels/{id}', [AgentChannelController::class, 'destroy'])->where('id', '[0-9a-f-]{36}');
+
+    // Quick replies
+    Route::prefix('quick-replies')->group(function () {
+        Route::get('/',         [QuickReplyController::class, 'index']);
+        Route::post('/',        [QuickReplyController::class, 'store']);
+        Route::put('/{id}',     [QuickReplyController::class, 'update'])->where('id', '[0-9a-f-]{36}');
+        Route::delete('/{id}',  [QuickReplyController::class, 'destroy'])->where('id', '[0-9a-f-]{36}');
+    });
 
     // Channels (CRUD)
     Route::prefix('channels')->group(function () {
