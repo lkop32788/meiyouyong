@@ -22,3 +22,13 @@ yarn-error.log*
 *.log
 logs/
 gateway/wa_sessions/
+
+# Redis snapshots. Redis was configured with dir=<repo root>, so its RDB landed
+# in the working tree and was committed twice — leaking Laravel session data.
+# The gateway caches DECRYPTED channel webhook secrets into Redis for 5 minutes
+# (gateway/middleware/verifySignature.js), so a snapshot taken in that window
+# would put provider credentials into the repository.
+dump.rdb
+*.rdb
+appendonly.aof
+appendonlydir/

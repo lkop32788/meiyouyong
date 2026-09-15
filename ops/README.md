@@ -39,6 +39,25 @@ sudo ./ops/install.sh uninstall  # 停止并移除
 
 迁移之后，`omniclick-queue.service` 与 fpm 池必须使用**同一个用户**——否则 `ExportReportJob` 写出的导出文件归属一个用户、Web 层归属另一个，两者还会争抢 `storage/logs/laravel.log` 的所有权。
 
+## Redis 必须用打包的 systemd 服务
+
+`redis-server.service` 是 Debian 包自带的，之前处于 disabled 状态，运行中的是一个在**仓库目录下手工启动**的实例。后果有三个：
+
+| 项 | 手工实例 | 打包服务 |
+|---|---|---|
+| 监听地址 | `0.0.0.0:6379`，**无密码** | `127.0.0.1` + `[::1]` |
+| 数据目录 | **仓库根目录**（快照写进工作区） | `/var/lib/redis` |
+| 运行用户 | root | `redis` |
+| 重启存活 | 否（PPID=1 孤儿进程） | 是 |
+
+```bash
+systemctl enable --now redis-server
+```
+
+本仓库的所有 unit 都声明了 `After=redis-server.service`，启用后该依赖才真正生效。
+
+**不要在仓库目录下手工执行 `redis-server`** —— 不带配置文件启动时，`dir` 默认取当前工作目录，快照就会重新落回工作区。
+
 ## 常用命令
 
 ```bash
