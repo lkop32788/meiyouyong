@@ -17,6 +17,10 @@ UNIT_DST="/etc/systemd/system"
 SERVICES=(omniclick-gateway omniclick-realtime omniclick-queue)
 TIMERS=(omniclick-scheduler)
 
+# One consumer instance per channel type. Must match config/rabbitmq.php, which
+# must in turn match the channelTypes array in gateway/lib/amqpClient.js.
+CONSUMERS=(whatsapp whatsapp_qr facebook line email telegram sms)
+
 log()  { printf '\033[1;34m[ops]\033[0m %s\n' "$*"; }
 die()  { printf '\033[1;31m[ops] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
@@ -32,15 +36,22 @@ fi
 case "${1:-install}" in
 status)
     for u in "${SERVICES[@]}"; do
-        printf '  %-22s %s\n' "$u" "$(systemctl is-active "$u" 2>/dev/null || echo inactive)"
+        printf '  %-28s %s\n' "$u" "$(systemctl is-active "$u" 2>/dev/null || echo inactive)"
     done
     for t in "${TIMERS[@]}"; do
-        printf '  %-22s %s\n' "$t.timer" "$(systemctl is-active "$t.timer" 2>/dev/null || echo inactive)"
+        printf '  %-28s %s\n' "$t.timer" "$(systemctl is-active "$t.timer" 2>/dev/null || echo inactive)"
+    done
+    for c in "${CONSUMERS[@]}"; do
+        printf '  %-28s %s\n' "omniclick-consumer@$c" "$(systemctl is-active "omniclick-consumer@$c" 2>/dev/null || echo inactive)"
     done
     exit 0
     ;;
 
 uninstall)
+    for c in "${CONSUMERS[@]}"; do
+        systemctl disable --now "omniclick-consumer@$c" 2>/dev/null || true
+    done
+    rm -f "$UNIT_DST/omniclick-consumer@.service"
     for u in "${SERVICES[@]}"; do
         systemctl disable --now "$u" 2>/dev/null || true
         rm -f "$UNIT_DST/$u.service"
@@ -81,6 +92,11 @@ done
 for t in "${TIMERS[@]}"; do
     log "enabling $t.timer"
     systemctl enable --now "$t.timer"
+done
+
+for c in "${CONSUMERS[@]}"; do
+    log "enabling omniclick-consumer@$c"
+    systemctl enable --now "omniclick-consumer@$c"
 done
 
 log "done — current state:"
