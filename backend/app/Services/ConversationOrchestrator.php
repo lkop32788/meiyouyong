@@ -63,6 +63,75 @@ class ConversationOrchestrator
     }
 
     /**
+     * Same reuse rules as findOrCreate(), but for a conversation we are about to
+     * SEND into (broadcast, bot outreach) rather than one opened by an inbound
+     * message — so there is no CanonicalMessage to derive a preview or intent
+     * tags from.
+     *
+     * Without this, an outbound-first flow has nowhere to put the message and no
+     * thread for the contact's reply to land in.
+     */
+    public function findOrCreateForOutbound(
+        string $companyId,
+        string $channelId,
+        string $contactId
+    ): Conversation {
+        $existing = Conversation::withoutGlobalScopes()
+            ->where('company_id', $companyId)
+            ->where('channel_id', $channelId)
+            ->where('contact_id', $contactId)
+            ->whereIn('status', ['pending', 'open', 'snoozed'])
+            ->orderByDesc('last_message_at')
+            ->first();
+
+        if ($existing) {
+            if ($existing->status === 'snoozed') {
+                $existing->update(['status' => 'open', 'snoozed_until' => null]);
+
+                return $existing->fresh();
+            }
+
+            return $existing;
+        }
+
+        $lockKey = "conv_create:{$companyId}:{$channelId}:{$contactId}";
+        $lock    = Cache::lock($lockKey, 5);
+
+        try {
+            $lock->block(5);
+
+            // Re-check inside the lock — another worker may have won the race.
+            $won = Conversation::withoutGlobalScopes()
+                ->where('company_id', $companyId)
+                ->where('channel_id', $channelId)
+                ->where('contact_id', $contactId)
+                ->whereIn('status', ['pending', 'open'])
+                ->first();
+
+            if ($won) {
+                return $won;
+            }
+
+            // 'open', not 'pending': we are the ones starting the exchange, so
+            // there is nothing waiting on an agent yet. unread_count stays 0 —
+            // our own outbound message is not unread for us.
+            return Conversation::create([
+                'id'                     => Str::uuid()->toString(),
+                'company_id'             => $companyId,
+                'channel_id'             => $channelId,
+                'contact_id'             => $contactId,
+                'status'                 => 'open',
+                'last_message_direction' => 'outbound',
+                'last_message_at'        => now(),
+                'message_count'          => 0,
+                'unread_count'           => 0,
+            ]);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
      * Update conversation header setiap ada pesan masuk baru.
      */
     public function updateAfterMessage(Conversation $conv, CanonicalMessage $message): void

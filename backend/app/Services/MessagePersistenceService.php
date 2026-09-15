@@ -63,23 +63,27 @@ class MessagePersistenceService
      */
     public function persistOutbound(
         Conversation $conv,
-        string       $agentId,
+        ?string      $senderId,
         string       $contentType,
-        array        $content
+        array        $content,
+        string       $senderType = 'agent'
     ): string {
+        // sender_type used to be hardcoded 'agent'. Bot and broadcast messages
+        // filed as agent messages skew ConversationResolvedAnalyticsJob's bot
+        // counts, was_bot_handled and bot_containment_pct.
         $doc = Message::create([
             'company_id'      => $conv->company_id,
             'conversation_id' => $conv->id,
             'channel_id'      => $conv->channel_id,
             'channel_type'    => $conv->channel->type,
             'direction'       => 'outbound',
-            'sender_type'     => 'agent',
-            'sender_id'       => $agentId,
+            'sender_type'     => $senderType,
+            'sender_id'       => $senderId,
             'content_type'    => $contentType,
             'content'         => $content,
             'status'          => 'pending',
             'is_deleted'      => false,
-            'is_automated'    => false,
+            'is_automated'    => $senderType !== 'agent',
         ]);
 
         return (string) $doc->_id;

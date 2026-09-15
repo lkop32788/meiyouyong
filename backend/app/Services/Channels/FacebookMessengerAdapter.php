@@ -56,14 +56,21 @@ class FacebookMessengerAdapter implements ChannelAdapterInterface
 
         $message = $this->buildMessage($contentType, $content, $replyToProviderMsgId);
 
+        // withToken() has to be on the PendingRequest, before post(). Chained
+        // after it, it lands on the Response — which has no such method, so this
+        // threw a raw Error (not ChannelSendException) and escaped the failover
+        // loop in ChannelRoutingService entirely.
+        //
+        // Endpoint is /me/messages, not /{psid}/messages: the path segment is
+        // the sending page, and the recipient goes in the body.
         $response = Http::acceptJson()
+            ->withToken($pageToken)
             ->timeout(20)
-            ->post(self::GRAPH . '/' . self::API_VERSION . "/{$psid}/messages", [
-                'recipient' => ['id' => $psid],
-                'message'   => $message,
+            ->post(self::GRAPH . '/' . self::API_VERSION . '/me/messages', [
+                'recipient'      => ['id' => $psid],
+                'message'        => $message,
                 'messaging_type' => 'RESPONSE',
-            ])
-            ->withToken($pageToken);
+            ]);
 
         if (! $response->successful()) {
             $errorData = $response->json('error', []);
