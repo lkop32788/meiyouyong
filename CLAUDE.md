@@ -25,7 +25,7 @@ cd backend
 composer install && cp .env.example .env && php artisan key:generate
 php artisan migrate
 composer dev          # serve + queue:listen + pail + vite concurrently
-composer test         # php artisan test (PHPUnit)
+composer test         # php artisan test (PHPUnit) — needs the test schemas below
 
 # Gateway (Express webhook receiver, port 3001)
 cd gateway
@@ -145,7 +145,24 @@ Copy between services when changing:
 
 - PHP: Laravel Pint (`vendor/bin/pint`)
 - Frontend: TypeScript strict mode enforced via `npm run build` (tsc + vite build)
-- Tests: Backend `composer test`, Gateway `npm test` (Jest). Tests are sparse — add tests next to the code you change.
+- Tests: Backend `composer test`, Gateway `npm test` (Jest). Add tests next to the code you change.
+
+### Backend test databases
+
+The suite runs against **MySQL, not sqlite** — the app uses `DAYOFWEEK`,
+`TIMESTAMPDIFF` and `JSON_CONTAINS`, none of which sqlite has, and running on
+sqlite let three SQL-dialect bugs ship undetected. `phpunit.xml` pins the
+schemas; create them once:
+
+```sql
+CREATE DATABASE omnichannel_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+GRANT ALL PRIVILEGES ON omnichannel_test.* TO '<DB_USERNAME>'@'127.0.0.1';
+```
+
+`RefreshDatabase` truncates whatever `DB_DATABASE` points at, so this must never
+be the application schema. Mongo-backed tests use `omnichannel_messages_test`
+(created on first write) via the `RefreshesMongo` trait, and skip themselves if
+no MongoDB is reachable.
 
 ## Language
 

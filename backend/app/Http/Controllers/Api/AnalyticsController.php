@@ -129,7 +129,9 @@ class AnalyticsController extends Controller
             ->groupByRaw('day_of_week, hour_of_day')
             ->orderByRaw('day_of_week, hour_of_day')
             ->get()
-            ->map(fn ($r) => [$r->day_of_week, $r->hour_of_day, $r->volume]);
+            // Cast: MySQL returns SUM() as a string, but the frontend types this
+            // tuple as [number, number, number] and does arithmetic on it.
+            ->map(fn ($r) => [(int) $r->day_of_week, (int) $r->hour_of_day, (int) $r->volume]);
 
         return response()->json($rows);
     }
