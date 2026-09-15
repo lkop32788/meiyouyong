@@ -115,6 +115,28 @@ class ConversationController extends Controller
     }
 
     /**
+     * PUT /api/conversations/{id}/read
+     *
+     * The agent chat has been calling this since before it existed, swallowing
+     * the 404 with .catch(() => {}) — so unread badges never cleared when a
+     * message arrived in an already-open conversation.
+     *
+     * MessageController::index also zeroes the counter, but only when loading
+     * the first page. This is the explicit path for "the conversation is open
+     * and the agent is looking at it right now".
+     */
+    public function markRead(Request $request, string $id): JsonResponse
+    {
+        $conv = $this->findOwned($request, $id);
+
+        if ($conv->unread_count > 0) {
+            $conv->update(['unread_count' => 0]);
+        }
+
+        return response()->json(['id' => $conv->id, 'unread_count' => 0]);
+    }
+
+    /**
      * POST /api/conversations/{id}/reopen
      */
     public function reopen(Request $request, string $id): JsonResponse

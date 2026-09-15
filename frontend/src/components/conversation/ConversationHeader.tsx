@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import api from '../../lib/api';
 import { useConversationStore } from '../../stores/useConversationStore';
 import { useInboxStore } from '../../stores/useInboxStore';
+import TransferModal from './TransferModal';
 
 const CHANNEL_LABEL: Record<string, string> = {
   whatsapp: 'WhatsApp',
@@ -19,7 +21,9 @@ const STATUS_BADGE: Record<string, string> = {
 
 export default function ConversationHeader() {
   const { detail, openConversation, closeConversation, activeConversationId } = useConversationStore();
-  const { removeConversation } = useInboxStore();
+  const removeConversation = useInboxStore((s) => s.removeConversation);
+  const setAssignee = useInboxStore((s) => s.setAssignee);
+  const [transferOpen, setTransferOpen] = useState(false);
 
   if (!detail || !activeConversationId) return null;
 
@@ -53,14 +57,21 @@ export default function ConversationHeader() {
           </span>
         </div>
 
-        {detail.assignedAgentName && (
-          <p className="text-xs text-gray-400 mt-0.5">
-            客服：{detail.assignedAgentName}
-          </p>
-        )}
+        <p className="text-xs text-gray-400 mt-0.5">
+          客服：{detail.assignedAgentName ?? '未分配'}
+        </p>
       </div>
 
       <div className="flex items-center gap-2 shrink-0">
+        {detail.status !== 'resolved' && (
+          <button
+            onClick={() => setTransferOpen(true)}
+            className="text-xs border border-gray-300 text-gray-600 hover:bg-gray-50 rounded px-3 py-1.5 transition"
+          >
+            转接
+          </button>
+        )}
+
         {detail.status !== 'resolved' ? (
           <button
             onClick={resolve}
@@ -77,6 +88,18 @@ export default function ConversationHeader() {
           </button>
         )}
       </div>
+
+      {transferOpen && (
+        <TransferModal
+          conversationId={activeConversationId}
+          currentAgentId={detail.assignedAgentId}
+          onClose={() => setTransferOpen(false)}
+          onTransferred={(agentId, agentName) => {
+            setAssignee(activeConversationId, agentId, agentName);
+            openConversation(activeConversationId); // pick up the new status too
+          }}
+        />
+      )}
     </div>
   );
 }
