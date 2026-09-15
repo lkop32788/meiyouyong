@@ -1,0 +1,31 @@
+[Unit]
+Description=OmniClick inbound consumer for queue inbound.%i
+Documentation=https://github.com/lkop32788/meiyouyong
+After=network-online.target rabbitmq-server.service mariadb.service mongod.service redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Template unit: one instance per channel type, because the command takes a
+# single queue argument. Enable with
+#   systemctl enable --now omniclick-consumer@whatsapp_qr
+#
+# See omniclick-gateway.service for why this is root.
+User=root
+WorkingDirectory=/root/omni-click-apps/backend
+ExecStart=/usr/bin/php artisan rabbitmq:consume inbound.%i --prefetch=10 --tries=3
+Restart=always
+RestartSec=5
+# Inbound queues carry a 5-minute x-message-ttl, so a consumer that stays down
+# does not build a backlog — it loses messages to the dead-letter exchange.
+# Never stop restarting.
+StartLimitIntervalSec=0
+# The command traps SIGTERM and finishes the in-flight message before exiting.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=omniclick-consumer-%i
+
+[Install]
+WantedBy=multi-user.target

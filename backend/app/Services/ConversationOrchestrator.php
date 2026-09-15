@@ -136,13 +136,25 @@ class ConversationOrchestrator
      */
     public function updateAfterMessage(Conversation $conv, CanonicalMessage $message): void
     {
+        // The counters cannot go through $conv->update() with DB::raw(): the
+        // model casts both to 'integer', and Eloquent tries to cast the
+        // Expression on the way in — "Object of class ...\Query\Expression
+        // could not be converted to int". Every inbound message died here.
+        //
+        // Split: the plain columns through the model (so events/observers still
+        // fire), the atomic increments through the query builder.
         $conv->update([
             'last_message_preview'   => $message->getPreview(),
             'last_message_at'        => $message->provider_timestamp,
             'last_message_direction' => 'inbound',
-            'message_count'          => DB::raw('message_count + 1'),
-            'unread_count'           => DB::raw('unread_count + 1'),
         ]);
+
+        Conversation::withoutGlobalScopes()
+            ->where('id', $conv->id)
+            ->update([
+                'message_count' => DB::raw('message_count + 1'),
+                'unread_count'  => DB::raw('unread_count + 1'),
+            ]);
     }
 
     // ── Private ──────────────────────────────────────────────────────────────
@@ -182,8 +194,12 @@ class ConversationOrchestrator
                 'last_message_preview'   => $preview,
                 'last_message_at'        => $message->provider_timestamp,
                 'last_message_direction' => 'inbound',
-                'message_count'          => 1,
-                'unread_count'           => 1,
+                // Counted by updateAfterMessage, which ProcessInboundMessage
+                // calls for new and existing conversations alike. Seeding 1 here
+                // made the very first message count twice — a brand-new
+                // conversation showed an unread badge of 2 for one message.
+                'message_count'          => 0,
+                'unread_count'           => 0,
             ]);
 
             // Catat assignment awal (unassigned)

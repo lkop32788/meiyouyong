@@ -201,9 +201,13 @@ class ConsumeRabbitMQ extends Command
         $channel->exchange_declare('message.status', 'topic', false, true, false);
 
         $channel->queue_declare('dead.letters', false, true, false, false);
-        $channel->queue_bind('dead.letters', 'messages.dlx', '#');
 
         foreach (config('rabbitmq.queues') as $type => $queueName) {
+            // Arguments must match amqpClient.js byte for byte. They did not:
+            // the gateway sets x-dead-letter-routing-key to "dead.{type}" while
+            // this declared plain "dead", so RabbitMQ rejected the redeclare
+            // with PRECONDITION_FAILED and the consumer could never start —
+            // inbound has never actually run end to end.
             $channel->queue_declare(
                 queue:      $queueName,
                 passive:    false,
@@ -213,11 +217,16 @@ class ConsumeRabbitMQ extends Command
                 nowait:     false,
                 arguments: [
                     'x-dead-letter-exchange'    => ['S', 'messages.dlx'],
-                    'x-dead-letter-routing-key' => ['S', 'dead'],
+                    'x-dead-letter-routing-key' => ['S', "dead.{$type}"],
                     'x-message-ttl'             => ['I', 300_000], // 5 menit
                 ],
             );
             $channel->queue_bind($queueName, 'messages', "inbound.{$type}");
+
+            // messages.dlx is a DIRECT exchange, so '#' is a literal key and
+            // never matches anything. Bind the actual dead-letter key per type,
+            // otherwise expired messages are dropped instead of retained.
+            $channel->queue_bind('dead.letters', 'messages.dlx', "dead.{$type}");
         }
     }
 
