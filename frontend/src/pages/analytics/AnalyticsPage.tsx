@@ -53,6 +53,7 @@ export default function AnalyticsPage() {
   const [breaches, setBreaches] = useState<SLABreach[]>([]);
   const [heatmap, setHeatmap]   = useState<[number, number, number][]>([]);
   const [loading, setLoading]   = useState(false);
+  const [failed, setFailed]     = useState<string[]>([]);
 
   const dateFrom = rangeDays === 0
     ? new Date().toISOString().slice(0, 10)
@@ -63,7 +64,10 @@ export default function AnalyticsPage() {
     setLoading(true);
     const params = `?date_from=${dateFrom}&date_to=${dateTo}`;
 
-    Promise.all([
+    // allSettled, not all: a single failing endpoint used to reject the whole
+    // batch, so none of the six setters ran and every tab rendered blank with
+    // no hint as to which call broke.
+    Promise.allSettled([
       api.get(`/analytics/overview${params}`),
       api.get(`/analytics/volume-trend${params}`),
       api.get(`/analytics/channel-breakdown${params}`),
@@ -71,12 +75,16 @@ export default function AnalyticsPage() {
       api.get(`/analytics/sla-breaches`),
       api.get(`/analytics/hourly-heatmap?weeks=4`),
     ]).then(([ov, vt, ch, ag, sl, hm]) => {
-      setOverview(ov.data);
-      setVolumeTrend(vt.data);
-      setChannels(ch.data);
-      setAgents(ag.data);
-      setBreaches(sl.data);
-      setHeatmap(hm.data);
+      const broken: string[] = [];
+
+      if (ov.status === 'fulfilled') setOverview(ov.value.data);     else broken.push('总览');
+      if (vt.status === 'fulfilled') setVolumeTrend(vt.value.data);  else broken.push('话务量');
+      if (ch.status === 'fulfilled') setChannels(ch.value.data);     else broken.push('渠道分布');
+      if (ag.status === 'fulfilled') setAgents(ag.value.data);       else broken.push('客服绩效');
+      if (sl.status === 'fulfilled') setBreaches(sl.value.data);     else broken.push('SLA');
+      if (hm.status === 'fulfilled') setHeatmap(hm.value.data);      else broken.push('热力图');
+
+      setFailed(broken);
     }).finally(() => setLoading(false));
   }, [rangeDays]);
 
@@ -114,6 +122,12 @@ export default function AnalyticsPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+        {!loading && failed.length > 0 && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+            以下数据加载失败，其余部分仍可查看：{failed.join('、')}
+          </div>
+        )}
+
         {loading && <p className="text-sm text-gray-400 text-center mt-8">加载数据中...</p>}
 
         {!loading && tab === 'overview' && overview && (

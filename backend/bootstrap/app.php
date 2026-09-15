@@ -17,7 +17,13 @@ return Application::configure(basePath: dirname(__DIR__))
         then: function () {
             \Illuminate\Support\Facades\Route::middleware('web')
                 ->group(base_path('routes/internal.php'));
-            \Illuminate\Support\Facades\Route::prefix('system')
+            // Prefixed api/ so the SPA can reach it: the frontend has a single
+            // axios instance with baseURL '/api', the vite dev proxy forwards
+            // only /api, and nginx proxies only /api/ — a bare 'system' prefix
+            // was unreachable from every environment. Also brings these routes
+            // under shouldRenderJsonWhen() below, so errors render as JSON.
+            // No 'tenant' middleware: super_admin is deliberately cross-tenant.
+            \Illuminate\Support\Facades\Route::prefix('api/system')
                 ->middleware(['auth:sanctum', 'system.admin'])
                 ->group(base_path('routes/system.php'));
         },
