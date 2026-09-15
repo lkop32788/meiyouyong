@@ -92,7 +92,10 @@ class BuildAudienceJob implements ShouldQueue
             ->where('id', $campaign->channel_id)
             ->first();
 
-        if (! $channel || ! $channel->channel_type) {
+        // channels.type — there is no channel_type column on this table, so this
+        // was always null and every campaign bailed out here as "channel not
+        // found", which BuildAudienceJob::handle then reports as status=failed.
+        if (! $channel || ! $channel->type) {
             Log::warning('BuildAudienceJob: channel not found', [
                 'campaign_id' => $campaign->id,
                 'channel_id'  => $campaign->channel_id,
@@ -103,7 +106,7 @@ class BuildAudienceJob implements ShouldQueue
         $base = DB::table('contacts as c')
             ->join('contact_channel_identities as ci', function ($join) use ($channel) {
                 $join->on('ci.contact_id', '=', 'c.id')
-                     ->where('ci.channel_type', '=', $channel->channel_type);
+                     ->where('ci.channel_type', '=', $channel->type);
             })
             ->where('c.company_id', $campaign->company_id)
             ->whereNull('c.deleted_at')
@@ -121,10 +124,13 @@ class BuildAudienceJob implements ShouldQueue
                 return collect();
             }
 
+            // JSON_CONTAINS(target, candidate_array) is 1 only when every element
+            // of the candidate is present, which is what the old T-SQL OPENJSON
+            // COUNT(DISTINCT value) = $tagCount was expressing. A NULL tags column
+            // yields NULL and is correctly excluded.
             $rows = $base->whereRaw(
-                "(SELECT COUNT(DISTINCT value) FROM OPENJSON(c.tags) WHERE value IN (" .
-                implode(',', array_fill(0, $tagCount, '?')) . ")) = ?",
-                [...$tags, $tagCount]
+                'JSON_CONTAINS(c.tags, ?)',
+                [json_encode(array_values($tags), JSON_UNESCAPED_UNICODE)]
             )->get();
 
             return collect($rows)->map(fn ($r) => (array) $r);

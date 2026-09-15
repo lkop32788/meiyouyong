@@ -74,9 +74,15 @@ class ChannelRoutingService
         $usedPrimary     = true;
 
         foreach ($channelsToTry as $channel) {
-            $adapter = $this->registry->forChannel($channel->type);
-
             try {
+                // Inside the try: forChannel() throws InvalidArgumentException
+                // for an unregistered channel type, and that is not a
+                // ChannelSendException — so it used to escape this loop and the
+                // whole outbound stack instead of degrading to failover. A
+                // channel type with no adapter should behave like a dead
+                // channel, not like a crash.
+                $adapter = $this->registry->forChannel($channel->type);
+
                 $providerMsgId = $adapter->send(
                     $conv, $contact, $channel, $contentType, $content, $replyToProviderMsgId
                 );
@@ -85,6 +91,22 @@ class ChannelRoutingService
                     'channel_id'          => $channel->id,
                     'provider_message_id' => $providerMsgId,
                 ];
+
+            } catch (\InvalidArgumentException $e) {
+                $lastException = new ChannelSendException(
+                    $e->getMessage(),
+                    channelType: $channel->type,
+                    previous: $e,
+                );
+
+                Log::warning('No adapter for channel type, trying failover', [
+                    'conversation_id'   => $conv->id,
+                    'company_id'        => $conv->company_id,
+                    'failed_channel_id' => $channel->id,
+                    'channel_type'      => $channel->type,
+                ]);
+
+                continue;
 
             } catch (ChannelSendException $e) {
                 $lastException = $e;

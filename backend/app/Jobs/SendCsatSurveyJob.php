@@ -35,17 +35,16 @@ class SendCsatSurveyJob implements ShouldQueue
         $surveyText = "Terima kasih telah menghubungi kami. Bagaimana pengalaman Anda hari ini?\n" .
                       "Berikan nilai 1-5 (1=Sangat Buruk, 5=Sangat Baik)";
 
-        $outbound->send($conv, [
-            'content_type' => 'text',
-            'content'      => ['text' => $surveyText],
-            'sender_type'  => 'bot',
-        ]);
-
+        // Claim the idempotency row BEFORE sending. The other order meant a
+        // failed send left no guard behind, so the retry would send a second
+        // survey to a real customer.
         DB::table('csat_surveys')->insert([
             'company_id'      => $conv->company_id,
             'conversation_id' => $this->conversationId,
             'contact_id'      => $conv->contact_id,
             'sent_at'         => now(),
         ]);
+
+        $outbound->sendSystemMessage($conv, 'text', ['body' => $surveyText]);
     }
 }

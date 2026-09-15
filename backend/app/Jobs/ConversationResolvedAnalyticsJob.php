@@ -93,7 +93,7 @@ class ConversationResolvedAnalyticsJob implements ShouldQueue
             'company_id'              => $conv->company_id,
             'conversation_id'         => $this->conversationId,
             'channel_id'              => $conv->channel_id,
-            'channel_type'            => $channel->channel_type ?? 'unknown',
+            'channel_type'            => $channel->type ?? 'unknown',
             'contact_id'              => $conv->contact_id,
             'assigned_agent_id'       => $conv->assigned_agent_id,
             'first_response_seconds'  => $firstResponseSec,
@@ -113,27 +113,42 @@ class ConversationResolvedAnalyticsJob implements ShouldQueue
             'met_first_response_sla'  => $metFirstResponse,
             'met_resolution_sla'      => $metResolution,
         ], ['company_id', 'conversation_id'], [
+            'channel_type',
             'first_response_seconds', 'resolution_seconds', 'handle_seconds',
             'total_messages', 'inbound_messages', 'outbound_messages', 'bot_messages',
             'was_bot_handled', 'had_bot_handoff', 'reassignment_count',
             'assigned_agent_id', 'met_first_response_sla', 'met_resolution_sla',
         ]);
 
-        // UPSERT hourly volume
+        // UPSERT hourly volume.
+        //
+        // This row is shared with HourlyVolumeAggregationJob on the same unique
+        // key, but the two have opposite semantics — that job SETS absolute
+        // values, this one INCREMENTS. Ownership is therefore split by column:
+        // this job owns resolved_count, that one owns new_conv_count. The update
+        // lists are disjoint, so ON DUPLICATE KEY UPDATE settles any insert race
+        // atomically regardless of which job arrives first.
+        //
+        // inbound_count / outbound_count are deliberately NOT incremented here.
+        // This job runs on resolve, so it would bucket a conversation's entire
+        // message history under resolved_at: a conversation opened Monday 09:00
+        // and resolved Friday 17:00 would dump every inbound message into
+        // Friday-17:00. hourlyHeatmap reads SUM(inbound_count) to answer "when
+        // does traffic arrive" — filling it from resolution time would not make
+        // the chart slow, it would make it wrong. The correct source is a
+        // MongoDB messages aggregate bucketed by message timestamp.
         $hourBucket = $resolvedAt->copy()->startOfHour();
         DB::table('analytics_hourly_volume')->upsert([
             'company_id'     => $conv->company_id,
             'channel_id'     => $conv->channel_id,
-            'channel_type'   => $channel->channel_type ?? 'unknown',
+            'channel_type'   => $channel->type ?? 'unknown',
             'hour_bucket'    => $hourBucket,
             'resolved_count' => 1,
-            'inbound_count'  => $inbound,
-            'outbound_count' => $outbound,
+            'inbound_count'  => 0,
+            'outbound_count' => 0,
             'new_conv_count' => 0,
         ], ['company_id', 'channel_id', 'hour_bucket'], [
             'resolved_count' => DB::raw('analytics_hourly_volume.resolved_count + 1'),
-            'inbound_count'  => DB::raw("analytics_hourly_volume.inbound_count + {$inbound}"),
-            'outbound_count' => DB::raw("analytics_hourly_volume.outbound_count + {$outbound}"),
         ]);
 
         // CSAT survey (if enabled)
