@@ -6,6 +6,7 @@ use App\Services\Channels\AdapterRegistry;
 use App\Services\Channels\FacebookMessengerAdapter;
 use App\Services\Channels\LineAdapter;
 use App\Services\Channels\SmtpEmailAdapter;
+use App\Services\Channels\TelegramAdapter;
 use App\Services\Channels\TwilioSmsAdapter;
 use App\Services\Channels\WhatsAppCloudAdapter;
 use App\Services\Channels\WhatsAppQrAdapter;
@@ -28,6 +29,7 @@ class AppServiceProvider extends ServiceProvider
             new WhatsAppQrAdapter(),
             new FacebookMessengerAdapter(),
             new LineAdapter(),
+            new TelegramAdapter(),
             new TwilioSmsAdapter(),
             new SmtpEmailAdapter(),
         ]));

@@ -9,6 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 /**
@@ -22,6 +23,70 @@ use Illuminate\Validation\Rule;
  */
 class ChannelConnectionController extends Controller
 {
+    // ── Telegram ─────────────────────────────────────────────────────────────
+
+    /**
+     * POST /api/channels/{id}/telegram/register-webhook
+     *
+     * Telegram inbound could never have worked: nothing in the repo ever called
+     * setWebhook, so Telegram had no URL to deliver to. And even with a URL, the
+     * gateway's verifyTelegram requires an X-Telegram-Bot-Api-Secret-Token
+     * header that Telegram only sends when the webhook was registered WITH a
+     * secret_token — which it reads back from credentials as app_secret /
+     * channel_secret, while the UI only ever wrote bot_token.
+     *
+     * This closes both halves: mint a secret, register it with Telegram, and
+     * store it under the key the gateway already looks for.
+     */
+    public function telegramRegisterWebhook(Request $request, string $id): JsonResponse
+    {
+        $channel = Channel::where('company_id', $request->user()->company_id)
+            ->where('type', 'telegram')
+            ->findOrFail($id);
+
+        $creds = $channel->getCredentials();
+        $token = $creds['bot_token'] ?? null;
+
+        if (! $token) {
+            return response()->json(['message' => '该渠道缺少 bot_token，请先在凭据中填写。'], 422);
+        }
+
+        // Reuse an existing secret so re-registering does not invalidate
+        // in-flight deliveries the gateway is still verifying against.
+        $secret = $creds['channel_secret'] ?? Str::random(48);
+
+        $baseUrl    = rtrim((string) config('app.webhook_base_url', env('WEBHOOK_BASE_URL', 'https://webhook.37182.club')), '/');
+        $webhookUrl = "{$baseUrl}/webhook/telegram/{$channel->id}";
+
+        $resp = Http::acceptJson()->timeout(15)->post("https://api.telegram.org/bot{$token}/setWebhook", [
+            'url'          => $webhookUrl,
+            'secret_token' => $secret,
+            // Telegram silently drops updates we have no normalizer for.
+            'allowed_updates' => ['message', 'edited_message', 'callback_query'],
+        ]);
+
+        if (! $resp->successful() || $resp->json('ok') !== true) {
+            Log::warning('Telegram setWebhook failed', [
+                'channel_id' => $channel->id,
+                'error_code' => $resp->json('error_code') ?? $resp->status(),
+            ]);
+
+            return response()->json([
+                'message' => 'Telegram 拒绝了 webhook 注册：' . ($resp->json('description') ?? '未知错误'),
+            ], 502);
+        }
+
+        $creds['channel_secret'] = $secret;
+        $channel->setCredentials($creds);
+        $channel->save();
+
+        return response()->json([
+            'webhook_url' => $webhookUrl,
+            'bot'         => Http::acceptJson()->timeout(10)
+                ->get("https://api.telegram.org/bot{$token}/getMe")->json('result.username'),
+        ]);
+    }
+
     // ── WhatsApp QR (Baileys on the gateway) ─────────────────────────────────
 
     /** POST /api/channels/{id}/qr/start */
