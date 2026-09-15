@@ -42,6 +42,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
             ->where('id', '[0-9a-f-]{36}');
         Route::post('/{id}/reopen',  [ConversationController::class, 'reopen'])
             ->where('id', '[0-9a-f-]{36}');
+        Route::put('/{id}/read',     [ConversationController::class, 'markRead'])
+            ->where('id', '[0-9a-f-]{36}');
         Route::post('/{id}/assign',  [ConversationController::class, 'assign'])
             ->where('id', '[0-9a-f-]{36}');
         Route::post('/{id}/snooze',  [ConversationController::class, 'snooze'])

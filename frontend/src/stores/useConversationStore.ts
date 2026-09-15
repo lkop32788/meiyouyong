@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import api from '../lib/api';
 import { getSocket } from '../lib/socket';
+import { useInboxStore } from './useInboxStore';
 import type { Message, ConversationDetail } from '../types';
 
 interface ConversationState {
@@ -24,6 +25,39 @@ interface ConversationState {
   setTypingAgent: (agentId: string, isTyping: boolean) => void;
   setContactTyping: (isTyping: boolean) => void;
 }
+
+/**
+ * The API speaks snake_case; ConversationDetail is camelCase. This used to be
+ * `detail: res.data` — axios types the body as `any`, so TypeScript accepted it
+ * and every camelCase read (contactName, channelType, status, assignedAgentName)
+ * silently came back undefined, blanking the whole conversation header.
+ */
+const mapDetail = (raw: Record<string, unknown>): ConversationDetail => ({
+  id:                   raw.id as string,
+  contactName:          raw.contact_name as string | null,
+  contactAvatar:        raw.contact_avatar as string | null,
+  channelType:          raw.channel_type as ConversationDetail['channelType'],
+  lastMessagePreview:   raw.last_message_preview as string | null,
+  lastMessageAt:        raw.last_message_at as string | null,
+  lastMessageDirection: raw.last_message_direction as ConversationDetail['lastMessageDirection'],
+  status:               raw.status as ConversationDetail['status'],
+  unreadCount:          (raw.unread_count as number) ?? 0,
+  assignedAgentId:      raw.assigned_agent_id as string | null,
+  assignedAgentName:    raw.assigned_agent_name as string | null,
+  priority:             (raw.priority as ConversationDetail['priority']) ?? 'normal',
+  channelId:            raw.channel_id as string,
+  channelName:          raw.channel_name as string | null,
+  contactId:            raw.contact_id as string,
+  contactEmail:         raw.contact_email as string | null,
+  contactPhone:         raw.contact_phone as string | null,
+  subject:              raw.subject as string | null,
+  intentTags:           (raw.intent_tags as string[]) ?? [],
+  messageCount:         (raw.message_count as number) ?? 0,
+  firstResponseAt:      raw.first_response_at as string | null,
+  resolvedAt:           raw.resolved_at as string | null,
+  snoozedUntil:         raw.snoozed_until as string | null,
+  createdAt:            raw.created_at as string | null,
+});
 
 const mapMsg = (raw: Record<string, unknown>): Message => ({
   id:                raw.id as string,
@@ -70,7 +104,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
 
     const msgs = (msgRes.data.data as Record<string, unknown>[]).map(mapMsg);
     set({
-      detail:            detailRes.data,
+      detail:            mapDetail(detailRes.data),
       messages:          msgs,
       isLoadingMessages: false,
       hasMoreMessages:   msgRes.data.has_more,
@@ -78,6 +112,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       typingAgentIds:    [],
       contactIsTyping:   false,
     });
+
+    // Loading the first page zeroes unread_count server-side; mirror it locally
+    // so the inbox badge clears now instead of at the next full reload.
+    useInboxStore.getState().clearUnread(id);
   },
 
   closeConversation: () => {

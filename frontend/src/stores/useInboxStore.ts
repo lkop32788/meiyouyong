@@ -21,6 +21,8 @@ interface InboxState {
   upsertConversation: (update: Partial<ConversationSummary> & { id: string }) => void;
   removeConversation: (id: string) => void;
   incrementUnread: (id: string) => void;
+  clearUnread: (id: string) => void;
+  setAssignee: (id: string, agentId: string | null, agentName: string | null) => void;
 }
 
 const mapConv = (raw: Record<string, unknown>): ConversationSummary => ({
@@ -114,6 +116,22 @@ export const useInboxStore = create<InboxState>((set, get) => ({
     set((s) => ({
       conversations: s.conversations.map((c) =>
         c.id === id ? { ...c, unreadCount: c.unreadCount + 1 } : c
+      ),
+    })),
+
+  // The server clears unread_count when a conversation is opened, but the list
+  // in memory kept its stale badge until the next full reload.
+  clearUnread: (id) =>
+    set((s) => ({
+      conversations: s.conversations.map((c) =>
+        c.id === id ? { ...c, unreadCount: 0 } : c
+      ),
+    })),
+
+  setAssignee: (id, agentId, agentName) =>
+    set((s) => ({
+      conversations: s.conversations.map((c) =>
+        c.id === id ? { ...c, assignedAgentId: agentId, assignedAgentName: agentName } : c
       ),
     })),
 }));

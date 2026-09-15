@@ -64,11 +64,21 @@ class RealtimeEventPublisher
         ]);
     }
 
-    public function messageStatusUpdate(string $companyId, string $mongoId, string $status): void
+    /**
+     * conversation_id is required, not optional: the realtime server routes this
+     * with conversationRoom(payload.conversation_id ?? ''), so omitting it
+     * emitted every delivery-status update into the empty room — nobody ever
+     * saw a message flip from pending to sent or failed.
+     */
+    public function messageStatusUpdate(string $companyId, string $conversationId, string $mongoId, string $status): void
     {
         $this->publish($companyId, [
             'type'    => 'MESSAGE_STATUS_UPDATE',
-            'payload' => ['message_id' => $mongoId, 'status' => $status],
+            'payload' => [
+                'conversation_id' => $conversationId,
+                'message_id'      => $mongoId,
+                'status'          => $status,
+            ],
         ]);
     }
 
