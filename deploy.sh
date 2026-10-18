@@ -64,6 +64,12 @@ if [ -d "$WEBROOT" ] && [ ! -L "$WEBROOT" ]; then
   mv "$WEBROOT" "$imported"
 fi
 
+# tsc/vite live in devDependencies, so a fresh clone (or a server with
+# NODE_ENV=production) has no build toolchain until we install it explicitly.
+log "installing frontend dependencies (npm ci)..."
+(cd "$FRONTEND" && npm ci --include=dev --no-audit --no-fund) \
+  || die "npm ci failed — live site untouched"
+
 log "building frontend (tsc + vite)..."
 (cd "$FRONTEND" && npm run build) || die "build failed — live site untouched"
 [ -f "$FRONTEND/dist/index.html" ] || die "dist/index.html missing after build"
