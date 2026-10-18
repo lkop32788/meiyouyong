@@ -33,7 +33,9 @@ class MessageController extends Controller
             ->orderByDesc('provider_timestamp');
 
         if ($before) {
-            $pivot = Message::where('_id', $before)->value('provider_timestamp');
+            $pivot = Message::where('_id', $before)
+                ->where('conversation_id', $conv->id)
+                ->value('provider_timestamp');
             if ($pivot) {
                 $query->where('provider_timestamp', '<', $pivot);
             }

@@ -90,8 +90,25 @@ export default function AgentChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Load conversations ─────────────────────────────────────────────────────
+  // API 返回 snake_case,手工映射成 ConversationSummary(camelCase)
+  const mapConv = (c: Record<string, unknown>): ConversationSummary => ({
+    id:                   c.id as string,
+    contactName:          (c.contact_name as string | null) ?? null,
+    contactAvatar:        (c.contact_avatar as string | null) ?? null,
+    channelType:          c.channel_type as ConversationSummary['channelType'],
+    lastMessagePreview:   (c.last_message_preview as string | null) ?? null,
+    lastMessageAt:        (c.last_message_at as string | null) ?? null,
+    lastMessageDirection: (c.last_message_direction as ConversationSummary['lastMessageDirection']) ?? null,
+    status:               c.status as ConversationSummary['status'],
+    unreadCount:          (c.unread_count as number) ?? 0,
+    assignedAgentId:      (c.assigned_agent_id as string | null) ?? null,
+    assignedAgentName:    (c.assigned_agent_name as string | null) ?? null,
+    priority:             (c.priority as ConversationSummary['priority']) ?? 'normal',
+  });
+
   const loadConvs = async () => {
     setLoadingConvs(true);
     try {
@@ -102,7 +119,7 @@ export default function AgentChatPage() {
       if (search.trim()) params.search = search.trim();
 
       const { data } = await api.get('/conversations', { params });
-      setConvs((data.data ?? data) as ConversationSummary[]);
+      setConvs(((data.data ?? data ?? []) as Record<string, unknown>[]).map(mapConv));
     } catch {
       toast.error('加载会话列表失败');
     } finally {
@@ -161,11 +178,27 @@ export default function AgentChatPage() {
     setReplyTo(null);
     setReactPickerId(null);
     setTypingAgent(null);
-    await loadMessages(conv.id);
-    api.put(`/conversations/${conv.id}/read`).catch(() => {});
+    setConvs(prev => prev.map(c => c.id === conv.id ? { ...c, unreadCount: 0 } : c));
+    await loadMessages(conv.id); // GET messages 同时会把 unread_count 归零
     // On mobile, close sidebar after selecting
     if (window.innerWidth < 768) setSidebarOpen(false);
   };
+
+  // ── Join/leave conversation room(message:new / typing 依赖此房间)────────
+  useEffect(() => {
+    if (!selected) return;
+    const socket = getSocket();
+    const convId = selected.id;
+
+    const join = () => socket.emit('join:conversation', { conversationId: convId });
+    join();
+    socket.on('connect', join); // 断线重连后重新 join
+
+    return () => {
+      socket.off('connect', join);
+      socket.emit('leave:conversation', { conversationId: convId });
+    };
+  }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Socket events ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -181,7 +214,49 @@ export default function AgentChatPage() {
       };
       setMessages(prev => [...prev, newMsg]);
       setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 30);
-      if (selected) api.put(`/conversations/${selected.id}/read`).catch(() => {});
+    };
+
+    // 渠道房间广播:只会收到分配给自己的渠道(WS 号)的会话更新
+    const onInboxUpdate = (data: {
+      conversationId: string;
+      preview?: string;
+      timestamp?: string;
+      direction?: string;
+    }) => {
+      setConvs(prev => {
+        const idx = prev.findIndex(c => c.id === data.conversationId);
+        if (idx === -1) {
+          // 列表里没有(新会话)→ 重新拉取完整摘要
+          if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+          reloadTimerRef.current = setTimeout(() => loadConvs(), 400);
+          return prev;
+        }
+        const cur = prev[idx];
+        const updated: ConversationSummary = {
+          ...cur,
+          lastMessagePreview:   data.preview ?? cur.lastMessagePreview,
+          lastMessageAt:        data.timestamp ?? cur.lastMessageAt,
+          lastMessageDirection: (data.direction as ConversationSummary['lastMessageDirection']) ?? cur.lastMessageDirection,
+          unreadCount:          data.conversationId === selected?.id ? cur.unreadCount : cur.unreadCount + 1,
+        };
+        return [updated, ...prev.filter((_, i) => i !== idx)];
+      });
+    };
+
+    // 渠道分配变更(fail-closed):刷新列表,当前会话交给 join 鉴权重新裁决
+    const onChannelsUpdated = () => {
+      toast('您的渠道分配已更新', { icon: 'ℹ️' });
+      loadConvs();
+      if (selected) {
+        socket.emit('join:conversation', { conversationId: selected.id });
+      }
+    };
+
+    const onJoinDenied = (data: { conversationId: string }) => {
+      if (data.conversationId !== selected?.id) return;
+      toast.error('该会话已不可访问');
+      setSelected(null);
+      setMessages([]);
     };
 
     const onMsgStatus = (data: { messageId: string; status: Message['status'] }) => {
@@ -216,6 +291,9 @@ export default function AgentChatPage() {
     socket.on('typing:start', onAgentTyping);
     socket.on('typing:stop', onAgentStoppedTyping);
     socket.on('inbox:resolved', onInboxResolved);
+    socket.on('inbox:update', onInboxUpdate);
+    socket.on('channels:updated', onChannelsUpdated);
+    socket.on('join:denied', onJoinDenied);
 
     return () => {
       socket.off('message:new', onNewMessage);
@@ -223,8 +301,12 @@ export default function AgentChatPage() {
       socket.off('typing:start', onAgentTyping);
       socket.off('typing:stop', onAgentStoppedTyping);
       socket.off('inbox:resolved', onInboxResolved);
+      socket.off('inbox:update', onInboxUpdate);
+      socket.off('channels:updated', onChannelsUpdated);
+      socket.off('join:denied', onJoinDenied);
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
     };
-  }, [selected]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selected, filter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Quick replies
   useEffect(() => {

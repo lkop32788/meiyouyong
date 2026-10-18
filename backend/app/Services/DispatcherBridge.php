@@ -47,6 +47,7 @@ class DispatcherBridge
         Redis::hMSet($key, [
             'status'            => $conv->status,
             'assigned_agent_id' => $conv->assigned_agent_id ?? '',
+            'channel_id'        => $conv->channel_id ?? '',
             'channel_type'      => $conv->channel->type ?? '',
             'is_bot_active'     => '0',
             'contact_id'        => $conv->contact_id,

@@ -6,11 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Models\AgentChannel;
 use App\Models\Channel;
 use App\Models\User;
+use App\Services\RealtimeEventPublisher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AgentChannelController extends Controller
 {
+    public function __construct(private readonly RealtimeEventPublisher $realtime) {}
+
     /**
      * GET /api/agent-channels
      * Query: ?agent_id=uuid (optional) — filter by agent
@@ -109,6 +112,9 @@ class AgentChannelController extends Controller
         ]);
         $ac->load('channel');
 
+        // Realtime Server refreshes the agent's channel rooms immediately
+        $this->realtime->agentChannelsUpdated($companyId, $data['agent_id']);
+
         return response()->json([
             'id'                   => $ac->id,
             'agent_id'             => $ac->agent_id,
@@ -141,6 +147,9 @@ class AgentChannelController extends Controller
         }
 
         $ac->delete();
+
+        // Fail-closed: revoked assignment takes effect on live sockets too
+        $this->realtime->agentChannelsUpdated($ac->company_id, $ac->agent_id);
 
         return response()->json(['message' => 'deleted']);
     }

@@ -23,6 +23,10 @@
              EncryptCookies in front of every /api/* route, so without a key the
              whole suite dies on a clean checkout. -->
         <env name="APP_KEY" value="base64:tPBBb8Lxs0dPT4L8iYyf4hVNyTPzB2mGPd5IJHiQfXA=" force="true"/>
+        <!-- Same reasoning as APP_KEY: LoginController signs the Socket.io JWT
+             on every successful login, and JwtService requires a non-null
+             secret, so a clean checkout without .env needs a fixed value. -->
+        <env name="APP_JWT_SECRET" value="testing-socket-jwt-secret" force="true"/>
         <env name="APP_URL" value="http://localhost" force="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4" force="true"/>

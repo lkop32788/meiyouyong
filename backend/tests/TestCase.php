@@ -27,6 +27,12 @@ abstract class TestCase extends BaseTestCase
         // and kills the PHP process outright.
         $this->presence = [];
         Redis::shouldReceive('hGetAll')->andReturnUsing(fn () => $this->presence);
+
+        // RealtimeEventPublisher / DispatcherBridge write-paths — no Redis
+        // server in the test loop, swallow them on the same facade mock.
+        Redis::shouldReceive('publish')->andReturn(1);
+        Redis::shouldReceive('hMSet')->andReturn(true);
+        Redis::shouldReceive('expire')->andReturn(true);
     }
 
     /**

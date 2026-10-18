@@ -24,6 +24,7 @@ class RealtimeEventPublisher
             'type'    => 'NEW_MESSAGE',
             'payload' => [
                 'conversation_id'   => $conv->id,
+                'channel_id'        => $conv->channel_id,
                 'message_id'        => $mongoMessageId,
                 'content_type'      => $contentType,
                 'preview'           => $preview,
@@ -42,6 +43,7 @@ class RealtimeEventPublisher
             'type'    => 'CONVERSATION_ASSIGNED',
             'payload' => [
                 'conversation_id' => $conv->id,
+                'channel_id'      => $conv->channel_id,
                 'agent_id'        => $agentId,
                 'company_id'      => $conv->company_id,
             ],
@@ -52,7 +54,11 @@ class RealtimeEventPublisher
     {
         $this->publish($conv->company_id, [
             'type'    => 'CONVERSATION_RESOLVED',
-            'payload' => ['conversation_id' => $conv->id, 'company_id' => $conv->company_id],
+            'payload' => [
+                'conversation_id' => $conv->id,
+                'channel_id'      => $conv->channel_id,
+                'company_id'      => $conv->company_id,
+            ],
         ]);
     }
 
@@ -60,15 +66,36 @@ class RealtimeEventPublisher
     {
         $this->publish($conv->company_id, [
             'type'    => 'CONVERSATION_REOPENED',
-            'payload' => ['conversation_id' => $conv->id, 'company_id' => $conv->company_id],
+            'payload' => [
+                'conversation_id' => $conv->id,
+                'channel_id'      => $conv->channel_id,
+                'company_id'      => $conv->company_id,
+            ],
         ]);
     }
 
-    public function messageStatusUpdate(string $companyId, string $mongoId, string $status): void
+    public function messageStatusUpdate(Conversation $conv, string $mongoId, string $status): void
+    {
+        $this->publish($conv->company_id, [
+            'type'    => 'MESSAGE_STATUS_UPDATE',
+            'payload' => [
+                'message_id'      => $mongoId,
+                'status'          => $status,
+                'conversation_id' => $conv->id,
+                'channel_id'      => $conv->channel_id,
+            ],
+        ]);
+    }
+
+    /**
+     * Penugasan channel agent berubah — Realtime Server akan refresh room
+     * membership socket milik agent ini (fail-closed).
+     */
+    public function agentChannelsUpdated(string $companyId, string $agentId): void
     {
         $this->publish($companyId, [
-            'type'    => 'MESSAGE_STATUS_UPDATE',
-            'payload' => ['message_id' => $mongoId, 'status' => $status],
+            'type'    => 'AGENT_CHANNELS_UPDATED',
+            'payload' => ['agent_id' => $agentId, 'company_id' => $companyId],
         ]);
     }
 

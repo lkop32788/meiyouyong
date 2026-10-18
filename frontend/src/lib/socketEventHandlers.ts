@@ -97,11 +97,11 @@ export function registerSocketHandlers(socket: Socket): () => void {
 
   // ── Personal notifications ───────────────────────────────────────────────
   const onConversationAssigned = (data: { conversation_id: string; contact_name?: string }) => {
-    toast.success(`Percakapan baru: ${data.contact_name ?? 'Tanpa nama'}`);
+    toast.success(`新会话分配：${data.contact_name ?? '未命名'}`);
     inbox.upsertConversation({ id: data.conversation_id });
 
     if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-      new Notification('Percakapan baru masuk', { body: data.contact_name ?? '' });
+      new Notification('收到新会话', { body: data.contact_name ?? '' });
     }
   };
 

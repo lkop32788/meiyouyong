@@ -34,3 +34,34 @@ export async function fetchAgentSkills(agentId) {
     return { skill_tags: [], max_concurrent_chats: 5 };
   }
 }
+
+/**
+ * Ambil daftar channel yang di-assign ke agent — menentukan channel room
+ * membership. Gagal/404 → [] (fail-closed: tanpa assignment tidak ada room).
+ */
+export async function fetchAgentChannels(agentId) {
+  try {
+    const { data } = await laravelClient.get(`/internal/agent/${agentId}/channels`);
+    return data.channel_ids ?? [];
+  } catch (err) {
+    console.error('[publisher] fetchAgentChannels failed:', err.message);
+    return [];
+  }
+}
+
+/**
+ * Fallback saat conv:state tidak ada di Redis (TTL habis) — tanya Laravel.
+ * Return state object atau null (caller WAJIB menolak akses jika null).
+ */
+export async function fetchConversationState(companyId, conversationId) {
+  try {
+    const { data } = await laravelClient.get(
+      `/internal/conversations/${conversationId}/state`,
+      { params: { company_id: companyId } }
+    );
+    return data.state ?? null;
+  } catch (err) {
+    console.error('[publisher] fetchConversationState failed:', err.message);
+    return null;
+  }
+}

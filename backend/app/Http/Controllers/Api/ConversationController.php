@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\ConversationResolvedAnalyticsJob;
+use App\Models\AgentChannel;
 use App\Models\Conversation;
 use App\Models\ConversationAssignment;
+use App\Models\User;
 use App\Services\RealtimeEventPublisher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -120,13 +122,43 @@ class ConversationController extends Controller
     /**
      * POST /api/conversations/{id}/assign
      * Body: { agent_id: uuid }
+     *
+     * Aturan:
+     * - Role agent hanya boleh claim untuk dirinya sendiri (bukan transfer).
+     * - Target harus user aktif di company yang sama.
+     * - Target ber-role agent harus punya assignment channel conversation ini —
+     *   kalau tidak, conversation masuk "black hole" yang tidak pernah terlihat.
      */
     public function assign(Request $request, string $id): JsonResponse
     {
         $validated = $request->validate(['agent_id' => 'required|uuid']);
 
+        $actor   = $request->user();
         $conv    = $this->findOwned($request, $id);
         $agentId = $validated['agent_id'];
+
+        if ($actor->isAgent() && $agentId !== $actor->id) {
+            return response()->json(['message' => '客服只能认领会话，不能转接给其他成员'], 403);
+        }
+
+        $target = User::where('id', $agentId)
+            ->where('company_id', $actor->company_id)
+            ->where('is_active', true)
+            ->first();
+
+        if (! $target) {
+            return response()->json(['message' => '未找到该客服账号或账号已停用'], 422);
+        }
+
+        if ($target->isAgent()) {
+            $hasChannel = AgentChannel::where('agent_id', $target->id)
+                ->where('channel_id', $conv->channel_id)
+                ->exists();
+
+            if (! $hasChannel) {
+                return response()->json(['message' => '该客服未分配此会话所属渠道，无法接收转接'], 422);
+            }
+        }
 
         DB::transaction(function () use ($conv, $agentId, $request) {
             $conv->update([

@@ -73,7 +73,7 @@ class OutboundMessageService
             ]);
 
             // ── 5. Realtime event ─────────────────────────────────────────────
-            $this->realtime->messageStatusUpdate($conv->company_id, $mongoId, 'sent');
+            $this->realtime->messageStatusUpdate($conv, $mongoId, 'sent');
 
             Log::info('Outbound message sent', [
                 'company_id'          => $conv->company_id,
@@ -88,7 +88,7 @@ class OutboundMessageService
         } catch (ChannelSendException $e) {
             // ── 4b. Semua channel gagal — update status = failed ──────────────
             $this->persistence->updateStatus($mongoId, 'failed', $e->providerErrorCode);
-            $this->realtime->messageStatusUpdate($conv->company_id, $mongoId, 'failed');
+            $this->realtime->messageStatusUpdate($conv, $mongoId, 'failed');
 
             Log::error('Outbound message failed after all channels', [
                 'company_id'      => $conv->company_id,

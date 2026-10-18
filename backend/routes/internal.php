@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Internal\AgentChannelsController;
 use App\Http\Controllers\Internal\AgentController;
 use App\Http\Controllers\Internal\AgentSkillsController;
 use App\Http\Controllers\Internal\CacheController;
@@ -25,6 +26,10 @@ Route::middleware('internal.key')->prefix('internal')->group(function () {
 
     // Agent skills (dipanggil Realtime Server saat agent connect)
     Route::get('/agent/{agentId}/skills', [AgentSkillsController::class, 'show'])
+        ->where('agentId', '[0-9a-f-]{36}');
+
+    // Agent channel assignments (dipanggil Realtime Server untuk room membership)
+    Route::get('/agent/{agentId}/channels', [AgentChannelsController::class, 'show'])
         ->where('agentId', '[0-9a-f-]{36}');
 
     // Conversation state (Redis HASH untuk Realtime Server event routing)

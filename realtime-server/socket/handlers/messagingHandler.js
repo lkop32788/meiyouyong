@@ -1,8 +1,14 @@
 import { conversationRoom } from '../rooms.js';
+import { MANAGER_ROLES } from '../channelRooms.js';
+import { fetchConversationState } from '../../redis/publisher.js';
 
 /**
  * Handle event messaging dari client:
  *   typing:start, typing:stop, message:read, join:conversation, leave:conversation
+ *
+ * Semua akses conversation di-gate oleh canAccessConversation() — fail-closed:
+ * state tidak ditemukan (termasuk conversation milik company lain) → tolak;
+ * role agent → channel conversation harus ada di assignment-nya.
  *
  * @param {import('socket.io').Socket} socket
  * @param {import('socket.io').Server} io
@@ -10,12 +16,12 @@ import { conversationRoom } from '../rooms.js';
  * @param {import('pino').Logger} log
  */
 export function registerMessagingHandler(socket, io, redis, log) {
-  const { agentId, companyId, role } = socket.data;
+  const { agentId, companyId } = socket.data;
 
   // ── typing:start ──────────────────────────────────────────────────────────
   socket.on('typing:start', async ({ conversationId } = {}) => {
     if (!conversationId) return;
-    if (!await isAuthorized(redis, companyId, agentId, conversationId, role)) return;
+    if (!await canAccessConversation(redis, socket.data, conversationId)) return;
 
     await redis.set(
       `typing:${companyId}:${conversationId}:${agentId}`,
@@ -42,6 +48,7 @@ export function registerMessagingHandler(socket, io, redis, log) {
   // ── message:read ──────────────────────────────────────────────────────────
   socket.on('message:read', async ({ conversationId, lastReadMessageId } = {}) => {
     if (!conversationId || !lastReadMessageId) return;
+    if (!await canAccessConversation(redis, socket.data, conversationId)) return;
 
     // Publish ke Laravel via Redis untuk update unread_count di SQL
     await redis.publish('dispatcher:requests', JSON.stringify({
@@ -61,11 +68,10 @@ export function registerMessagingHandler(socket, io, redis, log) {
   socket.on('join:conversation', async ({ conversationId } = {}) => {
     if (!conversationId) return;
 
-    // Validasi company ownership via Redis conv state
-    const state = await redis.hGetAll(`conv:state:${companyId}:${conversationId}`);
-    if (!state || !state.status) {
-      // State tidak ada di Redis — izinkan tetapi log
-      log.debug({ agentId, conversationId }, 'join:conversation — no state in Redis, allowing');
+    if (!await canAccessConversation(redis, socket.data, conversationId)) {
+      log.warn({ agentId, conversationId }, 'join:conversation denied');
+      socket.emit('join:denied', { conversationId });
+      return;
     }
 
     socket.join(conversationRoom(conversationId));
@@ -107,12 +113,31 @@ export function registerMessagingHandler(socket, io, redis, log) {
 // ── Helper ────────────────────────────────────────────────────────────────────
 
 /**
- * Cek apakah agent berhak mengirim typing indicator ke conversation ini.
- * Supervisor/admin boleh semua. Agent biasa hanya jika di-assign ke conversation.
+ * Apakah socket ini boleh mengakses conversation tersebut?
+ *
+ * 1. Ambil conv:state dari Redis; miss (atau state lama tanpa channel_id)
+ *    → fallback ke Laravel internal API, yang juga rebuild cache-nya.
+ * 2. State tetap tidak ada → TOLAK (conversation tidak ada / company lain).
+ * 3. Manager (supervisor+) → boleh semua conversation company-nya.
+ * 4. Agent → channel_id conversation harus ada di assignment socket ini.
  */
-async function isAuthorized(redis, companyId, agentId, conversationId, role) {
-  if (role === 'supervisor' || role === 'admin') return true;
+async function canAccessConversation(redis, socketData, conversationId) {
+  const { companyId, role, allowedChannels } = socketData;
 
-  const state = await redis.hGetAll(`conv:state:${companyId}:${conversationId}`);
-  return state?.assigned_agent_id === agentId;
+  let state = await redis.hGetAll(`conv:state:${companyId}:${conversationId}`);
+
+  const stale = !state?.status || (role === 'agent' && !state.channel_id);
+  if (stale) {
+    state = await fetchConversationState(companyId, conversationId);
+  }
+
+  if (!state?.status) return false;
+
+  if (MANAGER_ROLES.has(role)) return true;
+  if (role !== 'agent') return false;
+
+  const channelId = state.channel_id;
+  if (!channelId) return false;
+
+  return (allowedChannels ?? new Set()).has(channelId);
 }

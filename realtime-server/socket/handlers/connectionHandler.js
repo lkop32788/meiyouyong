@@ -1,4 +1,5 @@
 import { companyRoom, agentRoom } from '../rooms.js';
+import { MANAGER_ROLES, syncAgentChannelRooms } from '../channelRooms.js';
 import { fetchAgentSkills, notifyAgentOffline } from '../../redis/publisher.js';
 import { config } from '../../config/index.js';
 
@@ -18,8 +19,15 @@ export function registerConnectionHandler(socket, io, redis, subscriber, log) {
 
   (async () => {
     try {
-      // 1. Join rooms sesuai role
-      socket.join(companyRoom(companyId));
+      // 1. Join rooms sesuai role.
+      //    Manager (supervisor+) → company room: melihat semua channel.
+      //    Agent → HANYA channel room sesuai assignment (fail-closed, isolasi
+      //    antar nomor WA) + personal room.
+      if (MANAGER_ROLES.has(role)) {
+        socket.join(companyRoom(companyId));
+      } else {
+        await syncAgentChannelRooms(socket);
+      }
       socket.join(agentRoom(agentId));
 
       // 2. Simpan presence ke Redis
