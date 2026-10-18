@@ -54,6 +54,15 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
             ->where('id', '[0-9a-f-]{36}');
     });
 
+    // Members list — read-only, juga untuk role agent (presence / daftar rekan).
+    // Index-nya sendiri menyembunyikan member nonaktif dari non-manager.
+    Route::get('agents', [AgentController::class, 'index']);
+
+    // ═══ MANAGEMENT ROUTES (supervisor+) ══════════════════════════════════════
+    // Role agent TIDAK boleh menyentuh route di dalam group company.manager —
+    // frontend memang menyembunyikan halamannya, tapi boundary-nya di sini.
+    Route::middleware('company.manager')->group(function () {
+
     // Contacts
     Route::prefix('contacts')->group(function () {
         Route::get('/',            [ContactController::class, 'index']);
@@ -69,8 +78,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
             ->where('id', '[0-9a-f-]{36}');
     });
 
-    // Agents (untuk transfer dropdown, presence list)
-    Route::get('agents',    [AgentController::class, 'index']);
+    // Agents — write operations (index ada di luar group, lihat atas)
     Route::post('agents',   [AgentController::class, 'store']);
     Route::put('agents/{id}',    [AgentController::class, 'update'])->where('id', '[0-9a-f-]{36}');
     Route::delete('agents/{id}', [AgentController::class, 'destroy'])->where('id', '[0-9a-f-]{36}');
@@ -81,6 +89,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::post('agent-channels',       [AgentChannelController::class, 'store']);
     Route::delete('agent-channels/{id}', [AgentChannelController::class, 'destroy'])->where('id', '[0-9a-f-]{36}');
 
+    }); // ═══ end company.manager (part 1) ═══
+
     // Quick replies
     Route::prefix('quick-replies')->group(function () {
         Route::get('/',         [QuickReplyController::class, 'index']);
@@ -88,6 +98,9 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::put('/{id}',     [QuickReplyController::class, 'update'])->where('id', '[0-9a-f-]{36}');
         Route::delete('/{id}',  [QuickReplyController::class, 'destroy'])->where('id', '[0-9a-f-]{36}');
     });
+
+    // ═══ MANAGEMENT ROUTES (supervisor+), lanjutan ════════════════════════════
+    Route::middleware('company.manager')->group(function () {
 
     // Channels (CRUD)
     Route::prefix('channels')->group(function () {
@@ -191,11 +204,15 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::get('/hourly-heatmap',     [AnalyticsController::class, 'hourlyHeatmap']);
         Route::get('/sla-breaches',       [AnalyticsController::class, 'slaBreaches']);
         Route::post('/export',            [AnalyticsController::class, 'export']);
-        Route::get('/export/{jobId}/status', fn ($jobId) =>
+        // Cache key menyertakan company_id — job export milik company lain
+        // tidak bisa di-probe walau jobId-nya bocor.
+        Route::get('/export/{jobId}/status', fn (\Illuminate\Http\Request $request, $jobId) =>
             response()->json([
-                'status' => \Illuminate\Support\Facades\Cache::get("export:{$jobId}:status", 'not_found'),
-                'path'   => \Illuminate\Support\Facades\Cache::get("export:{$jobId}:path"),
+                'status' => \Illuminate\Support\Facades\Cache::get("export:{$request->user()->company_id}:{$jobId}:status", 'not_found'),
+                'path'   => \Illuminate\Support\Facades\Cache::get("export:{$request->user()->company_id}:{$jobId}:path"),
             ])
         );
     });
+
+    }); // ═══ end company.manager (part 2) ═══
 });

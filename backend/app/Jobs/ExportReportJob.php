@@ -26,7 +26,11 @@ class ExportReportJob implements ShouldQueue
 
     public function handle(): void
     {
-        Cache::put("export:{$this->jobId}:status", 'running', now()->addHour());
+        // Key menyertakan company_id — status endpoint membaca dengan company
+        // milik user yang login, jadi jobId company lain tidak bisa di-probe.
+        $prefix = "export:{$this->companyId}:{$this->jobId}";
+
+        Cache::put("{$prefix}:status", 'running', now()->addHour());
 
         try {
             $rows = match ($this->type) {
@@ -39,10 +43,10 @@ class ExportReportJob implements ShouldQueue
             $path = "exports/{$this->jobId}.csv";
             Storage::put($path, $csv);
 
-            Cache::put("export:{$this->jobId}:status", 'completed', now()->addHour());
-            Cache::put("export:{$this->jobId}:path", $path, now()->addHour());
+            Cache::put("{$prefix}:status", 'completed', now()->addHour());
+            Cache::put("{$prefix}:path", $path, now()->addHour());
         } catch (\Throwable $e) {
-            Cache::put("export:{$this->jobId}:status", 'failed', now()->addHour());
+            Cache::put("{$prefix}:status", 'failed', now()->addHour());
         }
     }
 

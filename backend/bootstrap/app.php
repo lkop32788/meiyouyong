@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureCanManageCompany;
 use App\Http\Middleware\EnsureIsSuperAdmin;
 use App\Http\Middleware\InternalApiKeyMiddleware;
 use App\Http\Middleware\TenantMiddleware;
@@ -24,9 +25,10 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
-            'tenant'       => TenantMiddleware::class,
-            'internal.key' => InternalApiKeyMiddleware::class,
-            'system.admin' => EnsureIsSuperAdmin::class,
+            'tenant'          => TenantMiddleware::class,
+            'internal.key'    => InternalApiKeyMiddleware::class,
+            'system.admin'    => EnsureIsSuperAdmin::class,
+            'company.manager' => EnsureCanManageCompany::class,
         ]);
 
         // All /api/* routes return JSON
